@@ -62,6 +62,7 @@ export function getNodeReplicaCount(nodeId: string): number {
  */
 export function writeObject(nodeId: string, objectId: string, data: Buffer): string {
   const filePath = path.join(getNodeDir(nodeId), `${objectId}.obj`);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, data);
   return filePath;
 }
