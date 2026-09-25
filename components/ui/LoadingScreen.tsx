@@ -132,9 +132,8 @@ export default function LoadingScreen({ onReady }: { onReady: () => void }) {
             </motion.div>
           )}
 
-          {/* ── Central ring/logo area (fixed center, independent of text below) ── */}
-          <div className="absolute inset-0 flex items-center justify-center z-10">
-          <div className="relative">
+          {/* ── Central emblem area ── */}
+          <div className="relative z-10 mb-6">
 
             {/* ── Outer dotted ring (phase 1+) ── */}
             {phase >= 0 && (
@@ -311,7 +310,6 @@ export default function LoadingScreen({ onReady }: { onReady: () => void }) {
                 style={{ background: 'radial-gradient(ellipse, rgba(56,189,248,0.15) 0%, transparent 70%)' }}
               />
             </motion.div>
-          </div>
           </div>
 
           {/* ── Title — letter-spacing collapse (Atheria-inspired) ── */}
