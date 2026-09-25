@@ -226,7 +226,7 @@ export default function VaultApp() {
         {!ready && <LoadingScreen onReady={() => setReady(true)} />}
       </AnimatePresence>
 
-      <div className="min-h-screen relative">
+      <div className={`min-h-screen relative ${!ready ? 'overflow-hidden' : ''}`}>
         {/* Header */}
         <PremiumHeader
           activeTab={activeTab}
