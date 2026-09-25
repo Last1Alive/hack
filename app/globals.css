@@ -1,0 +1,157 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-inter: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+html, body {
+  background: #030711;
+  color: #f1f5f9;
+  font-family: var(--font-inter);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Grid background */
+.bg-grid {
+  background-size: 40px 40px;
+  background-image: linear-gradient(rgba(6,182,212,0.04) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(6,182,212,0.04) 1px, transparent 1px);
+}
+
+/* Glass panels */
+.glass-panel {
+  background: linear-gradient(135deg, rgba(17,24,39,0.7) 0%, rgba(10,15,30,0.8) 100%);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid rgba(255,255,255,0.06);
+  box-shadow: 0 4px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.glass-card {
+  background: rgba(17,24,39,0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.05);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.glass-card:hover {
+  border-color: rgba(6,182,212,0.2);
+  box-shadow: 0 0 20px rgba(6,182,212,0.08);
+}
+
+/* Status indicators */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  animation: pulse-ring 2s cubic-bezier(0.4,0,0.6,1) infinite;
+}
+
+@keyframes pulse-ring {
+  0%, 100% { opacity: 0; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(1.5); }
+}
+
+.status-healthy { background: #10b981; box-shadow: 0 0 8px rgba(16,185,129,0.6); }
+.status-degraded { background: #f59e0b; box-shadow: 0 0 8px rgba(245,158,11,0.6); }
+.status-offline { background: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,0.6); }
+.status-recovering { background: #3b82f6; box-shadow: 0 0 8px rgba(59,130,246,0.6); }
+.status-corrupted { background: #f43f5e; box-shadow: 0 0 8px rgba(244,63,94,0.6); }
+
+/* Shimmer skeleton */
+.shimmer {
+  background: linear-gradient(90deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: rgba(255,255,255,0.02); }
+::-webkit-scrollbar-thumb { background: rgba(6,182,212,0.3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(6,182,212,0.5); }
+
+/* Selection */
+::selection { background: rgba(6,182,212,0.3); color: white; }
+
+/* Mono font for technical data */
+.mono { font-family: var(--font-mono); }
+
+/* Cyan glow accent */
+.cyan-glow { text-shadow: 0 0 10px rgba(6,182,212,0.5); }
+.cyan-border { border-color: rgba(6,182,212,0.3); }
+
+/* Node visualization */
+.node-connection {
+  stroke: rgba(6,182,212,0.2);
+  stroke-width: 1;
+}
+
+.node-connection.active {
+  stroke: rgba(6,182,212,0.5);
+  stroke-dasharray: 4 2;
+  animation: flow 1s linear infinite;
+}
+
+@keyframes flow {
+  to { stroke-dashoffset: -6; }
+}
+
+/* Loading screen */
+.loading-screen {
+  background: radial-gradient(ellipse at center, rgba(6,182,212,0.08) 0%, #030711 70%);
+}
+
+/* Button styles */
+.btn-primary {
+  background: linear-gradient(135deg, rgba(6,182,212,0.9) 0%, rgba(14,165,233,0.9) 100%);
+  border: 1px solid rgba(6,182,212,0.5);
+  color: #030711;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+  box-shadow: 0 0 20px rgba(6,182,212,0.4);
+  border-color: rgba(6,182,212,0.8);
+}
+
+.btn-danger {
+  background: rgba(239,68,68,0.15);
+  border: 1px solid rgba(239,68,68,0.3);
+  color: #ef4444;
+  transition: all 0.2s ease;
+}
+
+.btn-danger:hover {
+  background: rgba(239,68,68,0.25);
+  box-shadow: 0 0 16px rgba(239,68,68,0.3);
+}
+
+.btn-ghost {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: #94a3b8;
+  transition: all 0.2s ease;
+}
+
+.btn-ghost:hover {
+  background: rgba(255,255,255,0.06);
+  color: #f1f5f9;
+  border-color: rgba(255,255,255,0.15);
+}

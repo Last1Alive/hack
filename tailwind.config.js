@@ -1,0 +1,66 @@
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  darkMode: ["class"],
+  content: ['./app/**/*.{js,ts,jsx,tsx,mdx}', './src/**/*.{js,ts,jsx,tsx,mdx}'],
+  theme: {
+    container: { center: true, padding: "2rem", screens: { "2xl": "1400px" } },
+    extend: {
+      colors: {
+        border: "rgba(255,255,255,0.06)",
+        input: "rgba(255,255,255,0.04)",
+        ring: "#06b6d4",
+        background: "#030711",
+        foreground: "#f1f5f9",
+        primary: { DEFAULT: "#06b6d4", foreground: "#030711" },
+        secondary: { DEFAULT: "rgba(255,255,255,0.04)", foreground: "#f1f5f9" },
+        destructive: { DEFAULT: "#ef4444", foreground: "#f1f5f9" },
+        muted: { DEFAULT: "rgba(255,255,255,0.03)", foreground: "#64748b" },
+        accent: { DEFAULT: "#0ea5e9", foreground: "#f1f5f9" },
+        popover: { DEFAULT: "#0a0f1e", foreground: "#f1f5f9" },
+        card: { DEFAULT: "rgba(10,15,30,0.7)", foreground: "#f1f5f9" },
+        vault: {
+          cyan: "#06b6d4",
+          blue: "#3b82f6",
+          emerald: "#10b981",
+          amber: "#f59e0b",
+          rose: "#f43f5e",
+          violet: "#8b5cf6",
+          ink: "#030711",
+          smoke: "#0a0f1e",
+          fog: "#111827",
+          surface: "rgba(17,24,39,0.6)",
+        },
+      },
+      borderRadius: { lg: "12px", md: "8px", sm: "6px" },
+      fontFamily: { sans: ['var(--font-inter)', 'system-ui', 'sans-serif'] },
+      keyframes: {
+        "pulse-glow": {
+          "0%,100%": { boxShadow: "0 0 20px 2px rgba(6,182,212,0.2)" },
+          "50%": { boxShadow: "0 0 40px 6px rgba(6,182,212,0.4)" },
+        },
+        "scan": { "0%": { transform: "translateY(-100%)" }, "100%": { transform: "translateY(100%)" } },
+        "shimmer": { "0%": { backgroundPosition: "-200% 0" }, "100%": { backgroundPosition: "200% 0" } },
+        "fade-in": { "0%": { opacity: "0" }, "100%": { opacity: "1" } },
+        "slide-up": { "0%": { opacity: "0", transform: "translateY(20px)" }, "100%": { opacity: "1", transform: "translateY(0)" } },
+        "pulse-ring": {
+          "0%": { transform: "scale(0.8)", opacity: "0.5" },
+          "50%": { transform: "scale(1.2)", opacity: "0" },
+          "100%": { transform: "scale(0.8)", opacity: "0.5" },
+        },
+      },
+      animation: {
+        "pulse-glow": "pulse-glow 3s ease-in-out infinite",
+        "scan": "scan 3s linear infinite",
+        "shimmer": "shimmer 2s linear infinite",
+        "fade-in": "fade-in 0.5s ease-out",
+        "slide-up": "slide-up 0.4s ease-out",
+        "pulse-ring": "pulse-ring 2s cubic-bezier(0.4,0,0.6,1) infinite",
+      },
+      backgroundImage: {
+        "grid-pattern": "linear-gradient(rgba(6,182,212,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(6,182,212,0.03) 1px, transparent 1px)",
+        "radial-fog": "radial-gradient(ellipse at center, rgba(6,182,212,0.08) 0%, transparent 60%)",
+      },
+    },
+  },
+  plugins: [require("tailwindcss-animate")],
+};
