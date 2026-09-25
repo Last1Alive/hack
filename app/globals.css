@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -262,6 +262,16 @@ html, body {
   text-transform: uppercase;
   color: rgba(148,163,184,0.7);
   font-weight: 600;
+}
+
+/* ─── Cinematic title (loading screen) ────────────────────────────────────── */
+.cinematic-title {
+  font-family: 'Cinzel', serif;
+  letter-spacing: 0.18em;
+  background: linear-gradient(180deg, #f0f4ff 20%, #7dd3fc 55%, #a78bfa 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 /* ─── Metric display ─────────────────────────────────────────────────────── */
