@@ -39,8 +39,8 @@ export default function LoadingScreen({ onReady }: { onReady: () => void }) {
           key="loading"
           initial={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: 0.6, ease: [0.4, 0, 0.2, 1] } }}
-          className="fixed inset-0 z-[200] flex flex-col items-center justify-center overflow-hidden bg-[#050a14]"
-          style={{ background: '#050a14', backdropFilter: 'none' }}
+          className="fixed inset-0 z-[200] flex flex-col items-center justify-center overflow-hidden"
+          style={{ background: '#050a14' }}
         >
           {/* ── Ambient atmospheric glow ── */}
           <motion.div

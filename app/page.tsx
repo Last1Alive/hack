@@ -226,8 +226,6 @@ export default function VaultApp() {
         {!ready && <LoadingScreen onReady={() => setReady(true)} />}
       </AnimatePresence>
 
-      {/* App content — only mounts AFTER loading screen has finished its exit animation */}
-      {!ready && <div className="fixed inset-0 bg-[#050a14] z-[199]" aria-hidden="true" />}
       {ready && (
       <motion.div
         initial={{ opacity: 0 }}
