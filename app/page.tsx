@@ -226,7 +226,15 @@ export default function VaultApp() {
         {!ready && <LoadingScreen onReady={() => setReady(true)} />}
       </AnimatePresence>
 
-      <div className={`min-h-screen relative ${!ready ? 'overflow-hidden' : ''}`}>
+      {/* App content — only mounts AFTER loading screen has finished its exit animation */}
+      {!ready && <div className="fixed inset-0 bg-[#050a14] z-[199]" aria-hidden="true" />}
+      {ready && (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.4, ease: [0.2, 0.8, 0.2, 1] }}
+        className="min-h-screen relative"
+      >
         {/* Header */}
         <PremiumHeader
           activeTab={activeTab}
@@ -313,7 +321,8 @@ export default function VaultApp() {
             />
           )}
         </AnimatePresence>
-      </div>
+      </motion.div>
+      )}
 
       <div id="toast-container" />
     </>
