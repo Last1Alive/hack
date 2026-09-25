@@ -1,16 +1,17 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, Server, Database, Activity, AlertTriangle,
   Upload, RefreshCw, CheckCircle2, XCircle, Trash2,
   Search, Download, Scale, Cpu, HardDrive,
-  Wifi, WifiOff, Wrench, ArrowRight
+  Wifi, WifiOff, Wrench, ArrowRight,
+  Scan, Network,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import LoadingScreen from '@/components/ui/LoadingScreen';
 
-// Types
+// ─── Types ────────────────────────────────────────────────────────────────────
 type NodeStatus = 'healthy' | 'degraded' | 'offline' | 'recovering' | 'rebalancing' | 'corrupted';
 type ObjectStatus = 'valid' | 'degraded' | 'corrupted' | 'inconsistent';
 
@@ -22,7 +23,7 @@ interface Node {
 }
 
 interface Replica {
-  nodeId: string; chunkIndex: number; path: string;
+  nodeId: string; path: string;
   checksum: string; size: number; status: string;
   version: number; createdAt: string; updatedAt: string;
 }
@@ -30,8 +31,7 @@ interface Replica {
 interface ObjectMeta {
   id: string; name: string; mimeType: string;
   logicalSize: number; checksum: string; version: number;
-  replicationFactor: number; chunks: { index: number; checksum: string; size: number }[];
-  replicas: Replica[]; integrityStatus: ObjectStatus;
+  replicationFactor: number; replicas: Replica[]; integrityStatus: ObjectStatus;
   createdAt: string; updatedAt: string;
 }
 
@@ -49,7 +49,7 @@ interface ClusterHealth {
   availability: number; storageOverhead: number;
 }
 
-// ─── Helpers ───────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatBytes(b: number): string {
   if (b === 0) return '0 B';
   const k = 1024, sizes = ['B', 'KB', 'MB', 'GB'];
@@ -60,11 +60,27 @@ function formatTs(ts: string): string {
   try { return new Date(ts).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
   catch { return ts; }
 }
-function truncate(s: string, n = 12): string {
-  return s.length > n ? s.slice(0, n) + '...' : s;
+function truncate(s: string, n = 10): string {
+  return s.length > n ? s.slice(0, n) + '···' : s;
+}
+function statusLabel(s: NodeStatus | string): string {
+  const map: Record<string, string> = {
+    healthy: 'OPERATIONAL', degraded: 'DEGRADED', offline: 'OFFLINE',
+    recovering: 'RECOVERING', rebalancing: 'REBALANCING', corrupted: 'CORRUPTED',
+  };
+  return map[s] ?? s.toUpperCase();
+}
+function nodeStatusColor(s: NodeStatus): string {
+  const map: Record<NodeStatus, string> = {
+    healthy: '#10b981', degraded: '#f59e0b', offline: '#ef4444',
+    recovering: '#3b82f6', rebalancing: '#06b6d4', corrupted: '#f43f5e',
+  };
+  return map[s] ?? '#64748b';
 }
 
-// ─── Main App ──────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN APP
+// ═══════════════════════════════════════════════════════════════════════════════
 export default function VaultApp() {
   const [ready, setReady] = useState(false);
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -101,7 +117,7 @@ export default function VaultApp() {
     return () => clearInterval(interval);
   }, [refresh]);
 
-  // ─── Actions ─────────────────────────────────────────────────────────────
+  // ─── Actions ────────────────────────────────────────────────────────────────
   const handleUpload = async () => {
     if (!uploadFile) { toast.error('Select a file to upload'); return; }
     const form = new FormData();
@@ -116,9 +132,7 @@ export default function VaultApp() {
         toast.success(`Uploaded ${data.name}`);
         setUploadOpen(false); setUploadFile(null); setUploadName('');
         await refresh();
-      } else {
-        toast.error(data.error || 'Upload failed');
-      }
+      } else { toast.error(data.error || 'Upload failed'); }
     } catch { toast.error('Upload failed'); }
   };
 
@@ -186,191 +200,105 @@ export default function VaultApp() {
       const res = await fetch(`/api/objects/${obj.id}/download`);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        toast.error(err.error || 'Download failed');
-        return;
+        toast.error(err.error || 'Download failed'); return;
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = obj.name;
-      document.body.appendChild(a);
-      a.click();
+      a.href = url; a.download = obj.name;
+      document.body.appendChild(a); a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       toast.success(`Downloaded ${obj.name}`);
     } catch { toast.error('Download failed'); }
   };
 
-  // ─── Render ──────────────────────────────────────────────────────────────
+  const handleFabricNodeClick = useCallback((nodeId: string) => {
+    setActiveTab('nodes');
+    const node = nodes.find(n => n.id === nodeId);
+    if (node) setSelectedNode(node);
+  }, [nodes]);
+
+  // ─── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
       <AnimatePresence>
         {!ready && <LoadingScreen onReady={() => setReady(true)} />}
       </AnimatePresence>
 
-      <div className="min-h-screen bg-background text-foreground bg-grid">
+      <div className="min-h-screen relative">
         {/* Header */}
-        <header className="border-b border-border/50 glass-panel sticky top-0 z-40">
-          <div className="max-w-screen-2xl mx-auto px-6 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <Shield className="w-7 h-7 text-cyan-400" />
-                <div className="absolute inset-0 animate-pulse-glow rounded-full" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold tracking-tight">
-                  <span className="text-cyan-400 cyan-glow">VAULT</span>
-                  <span className="text-slate-500 font-light ml-2 text-sm hidden sm:inline">Distributed Storage</span>
-                </h1>
-              </div>
-            </div>
+        <PremiumHeader
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          health={health}
+          onRefresh={refresh}
+        />
 
-            <nav className="flex items-center gap-1">
-              {(['dashboard', 'objects', 'nodes'] as const).map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === tab
-                      ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-                  }`}
-                >
-                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                </button>
-              ))}
-            </nav>
-
-            <div className="flex items-center gap-2">
-              <span className={`px-2 py-1 rounded-full text-xs font-mono ${
-                health?.availability === 100 ? 'bg-emerald-500/15 text-emerald-400' :
-                health?.availability === 0 ? 'bg-red-500/15 text-red-400' :
-                'bg-amber-500/15 text-amber-400'
-              }`}>
-                {Math.round(health?.availability ?? 0)}% AVAIL
-              </span>
-              <button onClick={refresh} className="p-2 rounded-lg btn-ghost" title="Refresh">
-                <RefreshCw className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </header>
-
-        {/* Main Content */}
-        <main className="max-w-screen-2xl mx-auto px-6 py-6">
-          {activeTab === 'dashboard' && (
-            <DashboardView
-              health={health}
-              nodes={nodes}
-              operations={operations}
-              onRebalance={handleRebalance}
-              onVerifyAll={handleVerifyAll}
-              verifying={verifying}
-              onSelectObject={setSelectedObject}
-            />
-          )}
-          {activeTab === 'objects' && (
-            <ObjectsView
-              objects={objects}
-              onUploadOpen={() => setUploadOpen(true)}
-              onDelete={handleDelete}
-              onVerify={handleVerify}
-              onDownload={handleDownload}
-              onSelect={setSelectedObject}
-              uploading={false}
-            />
-          )}
-          {activeTab === 'nodes' && (
-            <NodesView
-              nodes={nodes}
-              selectedNode={selectedNode}
-              onSelectNode={setSelectedNode}
-              onAction={handleNodeAction}
-            />
-          )}
+        {/* Page content with transition */}
+        <main className="max-w-screen-2xl mx-auto px-6 py-6 relative z-10">
+          <AnimatePresence mode="wait">
+            {activeTab === 'dashboard' && (
+              <motion.div
+                key="dashboard"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }}
+              >
+                <DashboardView
+                  health={health} nodes={nodes} operations={operations}
+                  onRebalance={handleRebalance} onVerifyAll={handleVerifyAll}
+                  verifying={verifying} onSelectObject={setSelectedObject}
+                  onFabricNodeClick={handleFabricNodeClick}
+                />
+              </motion.div>
+            )}
+            {activeTab === 'objects' && (
+              <motion.div
+                key="objects"
+                initial={{ opacity: 0, x: 16 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -12 }}
+                transition={{ duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }}
+              >
+                <ObjectsView
+                  objects={objects}
+                  onUploadOpen={() => setUploadOpen(true)}
+                  onDelete={handleDelete}
+                  onVerify={handleVerify}
+                  onDownload={handleDownload}
+                  onSelect={setSelectedObject}
+                />
+              </motion.div>
+            )}
+            {activeTab === 'nodes' && (
+              <motion.div
+                key="nodes"
+                initial={{ opacity: 0, x: 16 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -12 }}
+                transition={{ duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }}
+              >
+                <NodesView
+                  nodes={nodes} selectedNode={selectedNode}
+                  onSelectNode={setSelectedNode} onAction={handleNodeAction}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </main>
 
         {/* Upload Modal */}
         <AnimatePresence>
           {uploadOpen && (
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-              onClick={(e) => { if (e.target === e.currentTarget) setUploadOpen(false); }}
-            >
-              <motion.div
-                initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-                className="glass-panel rounded-xl p-6 w-full max-w-md mx-4"
-              >
-                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                  <Upload className="w-5 h-5 text-cyan-400" /> Upload Object
-                </h2>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm text-slate-400 mb-1">Object Name</label>
-                    <input
-                      value={uploadName} onChange={e => setUploadName(e.target.value)}
-                      placeholder="my-object"
-                      className="w-full bg-white/5 border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-cyan-500/50"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-slate-400 mb-1">File</label>
-                    <div className="border-2 border-dashed border-border rounded-lg p-4 text-center cursor-pointer hover:border-cyan-500/30 transition-colors"
-                         onClick={() => document.getElementById('file-input')?.click()}>
-                      {uploadFile ? (
-                        <p className="text-sm text-cyan-400">{uploadFile.name} ({formatBytes(uploadFile.size)})</p>
-                      ) : (
-                        <p className="text-sm text-slate-500">Click to select a file</p>
-                      )}
-                      <input id="file-input" type="file" className="hidden"
-                        onChange={e => setUploadFile(e.target.files?.[0] || null)} />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <label className="text-sm text-slate-400">Replication Factor</label>
-                      <span className="text-xs text-slate-600 italic">(copies per object)</span>
-                    </div>
-                    <div className="text-xs text-slate-500 mb-2">
-                      Number of independent nodes that will each store a complete copy of this object.
-                    </div>
-                    <div className="grid grid-cols-4 gap-2 mb-2">
-                      {[1, 2, 3, 4].map(n => (
-                        <button key={n} onClick={() => setReplicationFactor(n)}
-                          className={`py-2 rounded-lg text-sm font-mono transition-all ${
-                            replicationFactor === n
-                              ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50'
-                              : 'bg-white/5 text-slate-500 border border-border hover:border-slate-600'
-                          }`}>
-                          <div className="text-base">{n}</div>
-                          <div className="text-xs opacity-60">{['Single','Dual','Triple','Quadruple'][n-1]}</div>
-                        </button>
-                      ))}
-                    </div>
-                    <div className="flex items-center justify-between text-xs text-slate-500 mono">
-                      <span>Available healthy nodes: {nodes.filter(n => n.status === 'healthy').length}</span>
-                      <span className={replicationFactor > nodes.filter(n => n.status === 'healthy').length ? 'text-rose-400' : 'text-emerald-400'}>
-                        {replicationFactor <= nodes.filter(n => n.status === 'healthy').length
-                          ? '✓ Can satisfy request'
-                          : '✗ Not enough nodes'}
-                      </span>
-                    </div>
-                    {uploadFile && replicationFactor <= 4 && (
-                      <div className="mt-2 p-2 rounded bg-white/3 text-xs mono text-slate-400">
-                        Storage plan: {formatBytes(uploadFile.size)} × {replicationFactor} ={' '}
-                        <span className="text-cyan-400">{formatBytes(uploadFile.size * replicationFactor)}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="flex gap-2 mt-6">
-                  <button onClick={() => setUploadOpen(false)} className="flex-1 btn-ghost py-2 rounded-lg text-sm">Cancel</button>
-                  <button onClick={handleUpload} className="flex-1 btn-primary py-2 rounded-lg text-sm">Upload</button>
-                </div>
-              </motion.div>
-            </motion.div>
+            <UploadModal
+              uploadName={uploadName} setUploadName={setUploadName}
+              uploadFile={uploadFile} setUploadFile={setUploadFile}
+              replicationFactor={replicationFactor} setReplicationFactor={setReplicationFactor}
+              healthyCount={nodes.filter(n => n.status === 'healthy').length}
+              onUpload={handleUpload} onClose={() => setUploadOpen(false)}
+            />
           )}
         </AnimatePresence>
 
@@ -378,8 +306,7 @@ export default function VaultApp() {
         <AnimatePresence>
           {selectedObject && (
             <ObjectDetailModal
-              obj={selectedObject}
-              nodes={nodes}
+              obj={selectedObject} nodes={nodes}
               onClose={() => setSelectedObject(null)}
               onVerify={() => { handleVerify(selectedObject.id); setSelectedObject(null); }}
               onDelete={() => { handleDelete(selectedObject.id); setSelectedObject(null); }}
@@ -388,134 +315,267 @@ export default function VaultApp() {
         </AnimatePresence>
       </div>
 
-      {/* Toast container */}
       <div id="toast-container" />
     </>
   );
 }
 
-// ─── Dashboard View ────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// HEADER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function PremiumHeader({
+  activeTab, setActiveTab, health, onRefresh,
+}: {
+  activeTab: string;
+  setActiveTab: (t: 'dashboard' | 'objects' | 'nodes') => void;
+  health: ClusterHealth | null;
+  onRefresh: () => void;
+}) {
+  const tabs: { key: 'dashboard' | 'objects' | 'nodes'; label: string }[] = [
+    { key: 'dashboard', label: 'Dashboard' },
+    { key: 'objects',   label: 'Objects' },
+    { key: 'nodes',     label: 'Nodes' },
+  ];
+  const tabIdx = tabs.findIndex(t => t.key === activeTab);
+
+  return (
+    <header className="sticky top-0 z-40 border-b border-white/[0.06]">
+      <div className="glass-panel !rounded-none !border-l-0 !border-r-0 !border-t-0 !shadow-none">
+        <div className="max-w-screen-2xl mx-auto px-6 h-14 flex items-center justify-between">
+          {/* Brand */}
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Shield className="w-5 h-5 text-vault-cyan/70" strokeWidth={1.5} />
+              <div className="absolute inset-0 animate-pulse-glow rounded-full opacity-30" />
+            </div>
+            <span className="vault-title text-lg tracking-tight">VAULT</span>
+            <span className="hidden sm:inline text-[10px] text-slate-500 tracking-[0.2em] uppercase font-medium border-l border-white/10 pl-3">
+              Fabric
+            </span>
+          </div>
+
+          {/* Nav */}
+          <nav className="relative flex items-center gap-1 bg-white/[0.02] rounded-full px-1 py-1 border border-white/[0.06]">
+            <motion.div
+              className="absolute top-1 bottom-1 rounded-full bg-white/[0.07] border border-white/[0.1]"
+              style={{ width: 'calc(33.33% - 4px)' }}
+              animate={{ left: `calc(${tabIdx * 33.33}% + 4px)` }}
+              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            />
+            {tabs.map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`relative z-10 px-5 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  activeTab === tab.key ? 'text-slate-100' : 'text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+
+          {/* Right */}
+          <div className="flex items-center gap-3">
+            <span className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono font-semibold ${
+              health?.availability === 100
+                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                : health?.availability === 0
+                ? 'bg-red-500/10 text-red-400 border border-red-500/20'
+                : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full animate-breath ${
+                health?.availability === 100 ? 'bg-emerald-400' : health?.availability === 0 ? 'bg-red-400' : 'bg-amber-400'
+              }`} />
+              {Math.round(health?.availability ?? 0)}%
+            </span>
+            <button onClick={onRefresh} className="p-2 rounded-full btn-ghost hover:bg-white/[0.05]" title="Refresh">
+              <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DASHBOARD VIEW
+// ═══════════════════════════════════════════════════════════════════════════════
+
 function DashboardView({
-  health, nodes, operations, onRebalance, onVerifyAll, verifying, onSelectObject
+  health, nodes, operations, onRebalance, onVerifyAll, verifying,
+  onSelectObject, onFabricNodeClick,
 }: {
   health: ClusterHealth | null; nodes: Node[]; operations: Operation[];
   onRebalance: () => void; onVerifyAll: () => void; verifying: boolean;
   onSelectObject: (o: ObjectMeta) => void;
+  onFabricNodeClick: (id: string) => void;
 }) {
   if (!health) return <SkeletonDashboard />;
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-      {/* Stats Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard
-          icon={Server} label="Nodes"
+    <div className="space-y-6">
+      {/* KPI Row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KPICard
+          icon={Server} label="NODES"
           value={`${health.healthyNodes}/${health.totalNodes}`}
-          sub={health.totalNodes - health.healthyNodes > 0 ? `${health.totalNodes - health.healthyNodes} offline` : 'All healthy'}
-          color={health.healthyNodes === health.totalNodes ? 'emerald' : 'amber'}
+          sub={health.totalNodes - health.healthyNodes > 0
+            ? `${health.totalNodes - health.healthyNodes} offline`
+            : 'All operational'}
+          color="#10b981" glowColor="rgba(16,185,129,"
         />
-        <StatCard
-          icon={Database} label="Objects"
+        <KPICard
+          icon={Database} label="OBJECTS"
           value={String(health.totalObjects)}
           sub={`${health.underReplicated} under-replicated`}
-          color={health.underReplicated === 0 ? 'cyan' : 'amber'}
+          color="#06b6d4" glowColor="rgba(6,182,212,"
         />
-        <StatCard
-          icon={HardDrive} label="Storage"
+        <KPICard
+          icon={HardDrive} label="STORAGE"
           value={formatBytes(health.logicalSize)}
-          sub={`Physical: ${formatBytes(health.physicalSize)} (${health.storageOverhead.toFixed(1)}×)`}
-          color="blue"
+          sub={`Physical ${formatBytes(health.physicalSize)} · ${health.storageOverhead.toFixed(1)}×`}
+          color="#3b82f6" glowColor="rgba(59,130,246,"
         />
-        <StatCard
-          icon={AlertTriangle} label="Issues"
+        <KPICard
+          icon={AlertTriangle} label="ISSUES"
           value={String(health.corrupted)}
-          sub={health.corrupted === 0 ? 'All valid' : `${health.corrupted} corrupted`}
-          color={health.corrupted === 0 ? 'emerald' : 'rose'}
+          sub={health.corrupted === 0 ? 'Integrity nominal' : `${health.corrupted} corrupted`}
+          color={health.corrupted === 0 ? '#10b981' : '#f43f5e'}
+          glowColor={health.corrupted === 0 ? 'rgba(16,185,129,' : 'rgba(244,63,94,'}
         />
       </div>
 
-      {/* Cluster Visualization */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Cluster Visualization */}
-        <div className="glass-panel rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Storage Fabric</h2>
-            <div className="flex gap-2">
-              <button onClick={onRebalance} className="btn-ghost px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5">
-                <Scale className="w-3.5 h-3.5" /> Rebalance
-              </button>
-              <button onClick={onVerifyAll} disabled={verifying} className="btn-ghost px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5" /> {verifying ? 'Scanning...' : 'Verify All'}
-              </button>
-            </div>
+      {/* Hero: Storage Fabric */}
+      <div className="glass-panel rounded-2xl p-6">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <div className="section-label mb-1">Storage Fabric</div>
+            <h2 className="text-base font-semibold text-slate-200 tracking-wide">Live Topology</h2>
           </div>
-          <NodeNetwork nodes={nodes} />
+          <div className="flex gap-2">
+            <FabBtn icon={Scale} label="Rebalance" onClick={onRebalance} />
+            <FabBtn icon={Scan} label={verifying ? 'Scanning…' : 'Verify All'} onClick={onVerifyAll} disabled={verifying} />
+          </div>
         </div>
+        <FabricNetwork nodes={nodes} onNodeClick={onFabricNodeClick} />
+      </div>
 
-        {/* Storage Summary */}
-        <div className="glass-panel rounded-xl p-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400 mb-4">Storage Overview</h2>
+      {/* Bottom row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="glass-panel rounded-2xl p-5">
+          <div className="section-label mb-4">Storage Overview</div>
           <div className="space-y-3">
-            <StorageBar label="Logical" value={health.logicalSize} total={health.physicalSize} color="text-cyan-400" />
-            <StorageBar label="Physical" value={health.physicalSize} total={health.physicalSize} color="text-blue-400" />
-            <div className="pt-2 border-t border-border">
-              <div className="flex justify-between text-xs">
-                <span className="text-slate-500">Replication Overhead</span>
-                <span className="mono text-slate-300">{health.storageOverhead.toFixed(2)}×</span>
-              </div>
-              <div className="flex justify-between text-xs mt-1">
-                <span className="text-slate-500">Under-replicated</span>
-                <span className={`mono ${health.underReplicated > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                  {health.underReplicated} object(s)
-                </span>
-              </div>
-              <div className="flex justify-between text-xs mt-1">
-                <span className="text-slate-500">Corrupted</span>
-                <span className={`mono ${health.corrupted > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                  {health.corrupted} object(s)
-                </span>
-              </div>
-            </div>
+            <InfoRow label="Logical Size" value={formatBytes(health.logicalSize)} color="text-cyan-400" />
+            <InfoRow label="Physical Size" value={formatBytes(health.physicalSize)} color="text-blue-400" />
+            <InfoRow label="Replication Overhead" value={`${health.storageOverhead.toFixed(2)}×`} color="text-violet-400" />
+            <div className="h-px bg-white/5 my-1" />
+            <InfoRow label="Under-Replicated" value={String(health.underReplicated)} color={health.underReplicated > 0 ? 'text-amber-400' : 'text-emerald-400'} />
+            <InfoRow label="Corrupted Objects" value={String(health.corrupted)} color={health.corrupted > 0 ? 'text-rose-400' : 'text-emerald-400'} />
+            <InfoRow label="Availability" value={`${Math.round(health.availability)}%`} color="text-emerald-400" />
+          </div>
+        </div>
+
+        <div className="glass-panel rounded-2xl p-5 lg:col-span-2">
+          <div className="section-label mb-4">Recent Operations</div>
+          <div className="space-y-0.5 max-h-60 overflow-y-auto pr-1">
+            {operations.length === 0 ? (
+              <p className="text-xs text-slate-600 text-center py-10">No operations yet. Upload an object to begin.</p>
+            ) : (
+              operations.slice(0, 20).map(op => <OpRow key={op.id} op={op} />)
+            )}
           </div>
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* Recent Operations */}
-      <div className="glass-panel rounded-xl p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400 mb-4">Recent Operations</h2>
-        <div className="space-y-1 max-h-64 overflow-y-auto">
-          {operations.length === 0 ? (
-            <p className="text-sm text-slate-600 text-center py-8">No operations yet. Upload an object to begin.</p>
-          ) : (
-            operations.slice(0, 20).map(op => (
-              <OperationRow key={op.id} op={op} />
-            ))
-          )}
-        </div>
+// ── KPI Card with cursor-following light ──
+function KPICard({
+  icon: Icon, label, value, sub, color, glowColor,
+}: {
+  icon: any; label: string; value: string; sub: string; color: string; glowColor: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ x: 50, y: 50 });
+
+  const handleMove = (e: React.MouseEvent) => {
+    if (!ref.current) return;
+    const r = ref.current.getBoundingClientRect();
+    setPos({ x: ((e.clientX - r.left) / r.width) * 100, y: ((e.clientY - r.top) / r.height) * 100 });
+  };
+
+  return (
+    <motion.div
+      ref={ref}
+      onMouseMove={handleMove}
+      style={{ '--rx': `${pos.x}%`, '--ry': `${pos.y}%` } as React.CSSProperties}
+      className="glass-card glow-card rounded-2xl p-4 relative cursor-default overflow-hidden group"
+      whileHover={{ y: -3 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+    >
+      {/* Top accent line */}
+      <div className="absolute top-0 left-4 right-4 h-px opacity-40"
+        style={{ background: `linear-gradient(90deg, transparent, ${color}, transparent)` }}
+      />
+      <div className="flex items-start justify-between mb-3">
+        <span className="section-label">{label}</span>
+        <Icon className="w-4 h-4 opacity-25" style={{ color }} />
       </div>
+      <div className="metric-value" style={{ color }}>{value}</div>
+      <div className="metric-sub mt-1.5">{sub}</div>
     </motion.div>
   );
 }
 
-function StatCard({ icon: Icon, label, value, sub, color }: {
-  icon: any; label: string; value: string; sub: string; color: string;
+function FabBtn({ icon: Icon, label, onClick, disabled }: {
+  icon: any; label: string; onClick: () => void; disabled?: boolean;
 }) {
-  const colorMap: Record<string, string> = {
-    cyan: 'text-cyan-400', emerald: 'text-emerald-400', amber: 'text-amber-400',
-    rose: 'text-rose-400', blue: 'text-blue-400',
-  };
-  const dotMap: Record<string, string> = {
-    cyan: 'bg-cyan-400', emerald: 'bg-emerald-400', amber: 'bg-amber-400',
-    rose: 'bg-rose-400', blue: 'bg-blue-400',
-  };
   return (
-    <div className="glass-card rounded-xl p-4">
-      <div className="flex items-start justify-between mb-2">
-        <span className="text-xs text-slate-500 uppercase tracking-wider">{label}</span>
-        <Icon className={`w-4 h-4 ${colorMap[color]}`} />
-      </div>
-      <div className={`text-2xl font-bold ${colorMap[color]}`}>{value}</div>
-      <div className="text-xs text-slate-500 mt-1">{sub}</div>
+    <button onClick={onClick} disabled={disabled}
+      className="btn-ghost px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 disabled:opacity-40">
+      <Icon className="w-3.5 h-3.5" /> {label}
+    </button>
+  );
+}
+
+function InfoRow({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div className="flex items-center justify-between text-xs">
+      <span className="text-slate-500">{label}</span>
+      <span className={`mono font-semibold ${color}`}>{value}</span>
+    </div>
+  );
+}
+
+function OpRow({ op }: { op: Operation }) {
+  const tc: Record<string, string> = {
+    upload: '#06b6d4', download: '#3b82f6', replicate: '#8b5cf6',
+    repair: '#10b981', verify: '#f59e0b', rebalance: '#0ea5e9',
+    fail: '#ef4444', recover: '#3b82f6', corrupt: '#f43f5e',
+    partition: '#f59e0b', delete: '#64748b',
+  };
+  const ti: Record<string, any> = {
+    upload: Upload, download: Download, replicate: ArrowRight,
+    repair: Wrench, verify: CheckCircle2, rebalance: Scale,
+    fail: XCircle, recover: RefreshCw, corrupt: AlertTriangle,
+    partition: WifiOff, delete: Trash2,
+  };
+  const Icon = ti[op.type] || Activity;
+  const c = tc[op.type] || '#64748b';
+
+  return (
+    <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-white/[0.02] transition-colors group">
+      <Icon className="w-3.5 h-3.5 shrink-0 opacity-50 group-hover:opacity-100 transition-opacity" style={{ color: c }} />
+      <span className="text-[10px] text-slate-600 mono shrink-0 w-16">{formatTs(op.timestamp)}</span>
+      <span className="text-[11px] font-medium capitalize shrink-0 px-1.5 py-0.5 rounded bg-white/5 text-slate-400">{op.type}</span>
+      <span className="text-xs text-slate-400 truncate flex-1">{op.description}</span>
+      <span className={`text-[10px] shrink-0 ${op.status === 'completed' ? 'text-emerald-500/70' : op.status === 'failed' ? 'text-red-400/70' : 'text-slate-600'}`}>
+        {op.status}
+      </span>
     </div>
   );
 }
@@ -523,153 +583,257 @@ function StatCard({ icon: Icon, label, value, sub, color }: {
 function SkeletonDashboard() {
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[1, 2, 3, 4].map(i => (
-          <div key={i} className="glass-card rounded-xl p-4">
-            <div className="shimmer h-3 w-16 rounded mb-3" />
-            <div className="shimmer h-7 w-24 rounded mb-2" />
-            <div className="shimmer h-2 w-20 rounded" />
+          <div key={i} className="glass-card rounded-2xl p-4">
+            <div className="shimmer h-3 w-12 rounded mb-3" />
+            <div className="shimmer h-7 w-20 rounded mb-2" />
+            <div className="shimmer h-2 w-16 rounded" />
           </div>
         ))}
       </div>
-      <div className="glass-card rounded-xl p-6"><div className="shimmer h-40 rounded" /></div>
-      <div className="glass-card rounded-xl p-6"><div className="shimmer h-32 rounded" /></div>
-    </div>
-  );
-}
-
-function StorageBar({ label, value, total, color }: { label: string; value: number; total: number; color: string }) {
-  const pct = total > 0 ? Math.min(100, (value / total) * 100) : 0;
-  return (
-    <div>
-      <div className="flex justify-between text-xs mb-1">
-        <span className="text-slate-500">{label}</span>
-        <span className={`mono font-semibold ${color}`}>{formatBytes(value)}</span>
-      </div>
-      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full transition-all ${color.replace('text-', 'bg-')}`} style={{ width: `${pct}%` }} />
+      <div className="glass-card rounded-2xl h-64"><div className="shimmer h-full w-full rounded-2xl" /></div>
+      <div className="grid grid-cols-3 gap-4">
+        <div className="glass-card rounded-2xl h-48"><div className="shimmer h-full w-full rounded-2xl" /></div>
+        <div className="glass-card rounded-2xl lg:col-span-2 h-48"><div className="shimmer h-full w-full rounded-2xl" /></div>
       </div>
     </div>
   );
 }
 
-// ─── Node Network Visualization ────────────────────────────────────────────
-function NodeNetwork({ nodes }: { nodes: Node[] }) {
-  const positions = [
-    { x: 120, y: 80 }, { x: 340, y: 80 },
-    { x: 120, y: 220 }, { x: 340, y: 220 },
-  ];
+// ═══════════════════════════════════════════════════════════════════════════════
+// STORAGE FABRIC NETWORK
+// ═══════════════════════════════════════════════════════════════════════════════
 
-  const healthyNodes = nodes.filter(n => n.status !== 'offline');
-  const displayNodes = nodes.slice(0, 4);
-  const displayPositions = displayNodes.map((_, i) => positions[i] ?? { x: 120 + (i % 2) * 220, y: 80 + Math.floor(i / 2) * 140 });
+const NODE_POS = [
+  { x: 130, y: 80 }, { x: 370, y: 80 },
+  { x: 130, y: 260 }, { x: 370, y: 260 },
+];
+
+function FabricNetwork({ nodes, onNodeClick }: {
+  nodes: Node[]; onNodeClick: (id: string) => void;
+}) {
+  const dn = nodes.slice(0, 4);
 
   return (
-    <div className="relative h-56 w-full">
-      <svg className="w-full h-full" viewBox="0 0 460 320">
-        {/* Connections */}
-        {displayPositions.flatMap((pos, i) =>
-          displayPositions.map((pos2, j) =>
+    <div className="relative w-full" style={{ height: 340 }}>
+      <svg className="w-full h-full" viewBox="0 0 500 340" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <linearGradient id="vg" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="rgba(56,189,248,0.06)" />
+            <stop offset="50%" stopColor="rgba(139,92,246,0.05)" />
+            <stop offset="100%" stopColor="rgba(56,189,248,0.06)" />
+          </linearGradient>
+          <filter id="ng">
+            <feGaussianBlur stdDeviation="3" result="b" />
+            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+          <filter id="sg">
+            <feGaussianBlur stdDeviation="8" result="b" />
+            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+
+        {/* Connection lines */}
+        {dn.map((node, i) =>
+          dn.map((node2, j) =>
             j > i ? (
-              <line
-                key={`${i}-${j}`}
-                x1={pos.x} y1={pos.y} x2={pos2.x} y2={pos2.y}
-                className="node-connection"
-                stroke={displayNodes[i].status !== 'offline' && displayNodes[j].status !== 'offline' ? 'rgba(6,182,212,0.2)' : 'rgba(239,68,68,0.1)'}
+              <line key={`c${i}${j}`}
+                x1={NODE_POS[i].x} y1={NODE_POS[i].y}
+                x2={NODE_POS[j].x} y2={NODE_POS[j].y}
+                stroke="url(#vg)" strokeWidth={1}
+                strokeDasharray={(node.partitions.includes(node2.id) || node2.partitions.includes(node.id)) ? '3 5' : undefined}
+                opacity={node.status === 'offline' || node2.status === 'offline' ? 0.12 : node.partitions.includes(node2.id) ? 0.3 : 0.45}
               />
             ) : null
           )
         )}
-        {/* Partitions */}
-        {displayNodes.map((node, i) =>
+
+        {/* Partition red overlays */}
+        {dn.map((node, i) =>
           node.partitions.map(peerId => {
-            const peerIdx = displayNodes.findIndex(n => n.id === peerId);
-            if (peerIdx < 0) return null;
+            const pj = dn.findIndex(n => n.id === peerId);
+            if (pj < 0) return null;
             return (
-              <line
-                key={`part-${i}-${peerIdx}`}
-                x1={displayPositions[i].x} y1={displayPositions[i].y}
-                x2={displayPositions[peerIdx].x} y2={displayPositions[peerIdx].y}
-                stroke="#ef4444" strokeWidth="2" strokeDasharray="4 4" opacity="0.6"
+              <line key={`p${i}${pj}`}
+                x1={NODE_POS[i].x} y1={NODE_POS[i].y}
+                x2={NODE_POS[pj].x} y2={NODE_POS[pj].y}
+                stroke="#ef4444" strokeWidth="1.5" strokeDasharray="3 4" opacity="0.35"
               />
             );
           })
         )}
+
+        {/* Data flow particles */}
+        {dn.filter(n => n.status !== 'offline').map((_, i) =>
+          dn.filter((_, j) => j > i && dn[j]?.status !== 'offline').map((_, j) => (
+            <FlowParticle key={`f${i}${j}`}
+              x1={NODE_POS[i].x} y1={NODE_POS[i].y}
+              x2={NODE_POS[j].x} y2={NODE_POS[j].y}
+              delay={i * 0.8 + j * 0.4}
+            />
+          ))
+        )}
+
         {/* Nodes */}
-        {displayPositions.map((pos, i) => {
-          const node = displayNodes[i];
+        {dn.map((node, i) => {
           if (!node) return null;
-          const color = node.status === 'healthy' ? '#10b981' :
-                        node.status === 'offline' ? '#ef4444' :
-                        node.status === 'recovering' ? '#3b82f6' :
-                        node.status === 'corrupted' ? '#f43f5e' : '#f59e0b';
+          const pos = NODE_POS[i];
+          const active = node.status === 'healthy';
+          const oc = nodeStatusColor(node.status);
+
           return (
-            <g key={node.id} className="cursor-pointer" onClick={() => { /* select node */ }}>
-              <circle cx={pos.x} cy={pos.y} r="28" fill={`${color}15`} stroke={color} strokeWidth="1.5" />
-              <circle cx={pos.x} cy={pos.y} r="4" fill={color} />
-              <text x={pos.x} y={pos.y + 44} textAnchor="middle" fill="#94a3b8" fontSize="11" fontFamily="monospace">
+            <g key={node.id} className="cursor-pointer" onClick={() => onNodeClick(node.id)}>
+              {/* Ambient glow */}
+              {active && (
+                <circle cx={pos.x} cy={pos.y} r="56" fill={oc} opacity="0.04" filter="url(#sg)" />
+              )}
+
+              {/* Outer orbital ring */}
+              <circle cx={pos.x} cy={pos.y} r={active ? 44 : 38}
+                fill="none" stroke={oc} strokeWidth={0.7}
+                strokeDasharray={active ? '5 7' : '2 5'}
+                opacity={active ? 0.35 : 0.15}
+                style={{ transformOrigin: `${pos.x}px ${pos.y}px`, animation: 'orbit 22s linear infinite' }}
+              />
+              {/* Inner orbital ring */}
+              <circle cx={pos.x} cy={pos.y} r={active ? 36 : 30}
+                fill="none" stroke="rgba(56,189,248,0.12)" strokeWidth={0.5}
+                strokeDasharray={active ? '8 5' : '3 5'}
+                style={{ transformOrigin: `${pos.x}px ${pos.y}px`, animation: 'orbit 16s linear infinite reverse' }}
+              />
+
+              {/* Crystal core */}
+              <circle cx={pos.x} cy={pos.y} r={active ? 28 : 24}
+                fill="rgba(6,10,20,0.9)" stroke={oc} strokeWidth={active ? 1.5 : 1}
+                opacity={active ? 0.9 : 0.4}
+                filter={active ? 'url(#ng)' : undefined}
+              />
+              {/* Core fill gradient */}
+              <circle cx={pos.x} cy={pos.y} r={active ? 22 : 18}
+                fill={oc} opacity={active ? 0.07 : 0.03}
+              />
+              {/* Center dot */}
+              <circle cx={pos.x} cy={pos.y} r={active ? 5 : 4}
+                fill={oc} opacity={active ? 0.85 : 0.35}
+              />
+
+              {/* Recovering pulse */}
+              {node.status === 'recovering' && (
+                <circle cx={pos.x} cy={pos.y} r="28" fill="none" stroke="#3b82f6" strokeWidth="1" opacity="0.3">
+                  <animate attributeName="r" values="28;40;28" dur="2s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0.3;0;0.3" dur="2s" repeatCount="indefinite" />
+                </circle>
+              )}
+
+              {/* Labels */}
+              <text x={pos.x} y={pos.y + 56} textAnchor="middle"
+                fill={active ? 'rgba(148,163,184,0.75)' : 'rgba(100,116,139,0.45)'}
+                fontSize="10" fontFamily="var(--font-mono)" fontWeight="500" letterSpacing="0.08em">
                 {node.id.toUpperCase()}
               </text>
-              <text x={pos.x} y={pos.y + 56} textAnchor="middle" fill="#475569" fontSize="9" fontFamily="monospace">
+              <text x={pos.x} y={pos.y + 69} textAnchor="middle"
+                fill="rgba(100,116,139,0.35)" fontSize="8.5" fontFamily="var(--font-mono)">
                 {formatBytes(node.usedBytes)} / {formatBytes(node.capacityBytes)}
               </text>
             </g>
           );
         })}
       </svg>
+
+      {/* Legend */}
+      <div className="absolute bottom-2 left-4 flex gap-4 text-[10px] text-slate-500 mono">
+        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Healthy</span>
+        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-blue-400" />Recovering</span>
+        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-red-400" />Offline</span>
+        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-amber-400" />Degraded</span>
+      </div>
     </div>
   );
 }
 
-// ─── Objects View ──────────────────────────────────────────────────────────
-function ObjectsView({ objects, onUploadOpen, onDelete, onVerify, onDownload, onSelect, uploading }: {
+function FlowParticle({ x1, y1, x2, y2, delay }: {
+  x1: number; y1: number; x2: number; y2: number; delay: number;
+}) {
+  return (
+    <circle r="2.5" fill="rgba(56,189,248,0.75)" filter="url(#ng)">
+      <animateMotion
+        dur={`${2.5 + Math.random() * 2}s`}
+        repeatCount="indefinite"
+        begin={`${delay}s`}
+        path={`M${x1},${y1} L${x2},${y2}`}
+      />
+    </circle>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OBJECTS VIEW
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function ObjectsView({ objects, onUploadOpen, onDelete, onVerify, onDownload, onSelect }: {
   objects: ObjectMeta[]; onUploadOpen: () => void; onDelete: (id: string) => void;
   onVerify: (id: string) => void; onDownload: (obj: ObjectMeta) => void;
-  onSelect: (obj: ObjectMeta) => void; uploading: boolean;
+  onSelect: (obj: ObjectMeta) => void;
 }) {
   const [search, setSearch] = useState('');
 
-  const filtered = objects.filter(o =>
-    o.name.toLowerCase().includes(search.toLowerCase()) ||
-    o.id.slice(0, 8).toLowerCase().includes(search.toLowerCase())
+  const filtered = useMemo(() =>
+    objects.filter(o =>
+      o.name.toLowerCase().includes(search.toLowerCase()) ||
+      o.id.slice(0, 8).toLowerCase().includes(search.toLowerCase())
+    ),
+    [objects, search]
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      {/* Toolbar */}
       <div className="flex items-center gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+        <div className="relative flex-1 group">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-vault-cyan/60 transition-colors" />
           <input
             value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search objects..."
-            className="w-full bg-white/5 border border-border rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:border-cyan-500/50"
+            placeholder="Search by name or ID…"
+            className="w-full bg-white/[0.03] border border-white/[0.07] rounded-xl pl-10 pr-4 py-2.5 text-sm outline-none
+              focus:border-vault-cyan/30 focus:bg-white/[0.05] focus:shadow-[0_0_20px_rgba(56,189,248,0.06)]
+              transition-all duration-200 placeholder:text-slate-600"
           />
         </div>
-        <button onClick={onUploadOpen} className="btn-primary px-4 py-2 rounded-lg text-sm flex items-center gap-2">
-          <Upload className="w-4 h-4" /> Upload
-        </button>
+        <motion.button
+          onClick={onUploadOpen}
+          whileHover={{ scale: 1.03, y: -1 }}
+          whileTap={{ scale: 0.97 }}
+          className="btn-primary px-5 py-2.5 rounded-xl text-sm flex items-center gap-2 shadow-lg"
+        >
+          <Upload className="w-4 h-4" /> Upload Object
+        </motion.button>
       </div>
 
+      {/* Empty */}
       {filtered.length === 0 ? (
-        <div className="glass-panel rounded-xl p-12 text-center">
-          <Database className="w-12 h-12 text-slate-700 mx-auto mb-3" />
+        <div className="glass-panel rounded-2xl p-16 text-center">
+          <Database className="w-10 h-10 text-slate-700 mx-auto mb-4 opacity-40" />
           <p className="text-slate-500 text-sm">
-            {search ? 'No objects match your search.' : 'No objects stored yet. Upload your first object.'}
+            {search ? 'No objects match your search.' : 'Your storage fabric is empty. Upload your first object.'}
           </p>
         </div>
       ) : (
-        <div className="glass-panel rounded-xl overflow-hidden">
+        <div className="glass-panel rounded-2xl overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border text-left">
+              <tr className="border-b border-white/[0.06]">
                 {['Name', 'Size', 'Checksum', 'Replicas', 'Status', 'Actions'].map(h => (
-                  <th key={h} className="px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">{h}</th>
+                  <th key={h} className="px-5 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-[0.15em] text-left">
+                    {h}
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {filtered.map(obj => (
-                <ObjectRow key={obj.id} obj={obj} onDelete={onDelete} onVerify={onVerify} onDownload={onDownload} onSelect={onSelect} />
+              {filtered.map((obj, idx) => (
+                <ObjectRow key={obj.id} obj={obj} idx={idx}
+                  onDelete={onDelete} onVerify={onVerify} onDownload={onDownload} onSelect={onSelect} />
               ))}
             </tbody>
           </table>
@@ -679,183 +843,248 @@ function ObjectsView({ objects, onUploadOpen, onDelete, onVerify, onDownload, on
   );
 }
 
-function ObjectRow({ obj, onDelete, onVerify, onDownload, onSelect }: {
-  obj: ObjectMeta; onDelete: (id: string) => void; onVerify: (id: string) => void;
+function ObjectRow({ obj, idx, onDelete, onVerify, onDownload, onSelect }: {
+  obj: ObjectMeta; idx: number;
+  onDelete: (id: string) => void; onVerify: (id: string) => void;
   onDownload: (obj: ObjectMeta) => void; onSelect: (obj: ObjectMeta) => void;
 }) {
-  const statusColor = obj.integrityStatus === 'valid' ? 'text-emerald-400' :
-                      obj.integrityStatus === 'degraded' ? 'text-amber-400' :
-                      obj.integrityStatus === 'corrupted' ? 'text-rose-400' : 'text-slate-400';
-
-  const validReplicas = obj.replicas.filter(r => r.status === 'valid').length;
+  const validCount = obj.replicas.filter(r => r.status === 'valid').length;
+  const sc = obj.integrityStatus === 'valid' ? 'text-emerald-400' :
+    obj.integrityStatus === 'degraded' ? 'text-amber-400' :
+    obj.integrityStatus === 'corrupted' ? 'text-rose-400' : 'text-slate-500';
+  const sbg = obj.integrityStatus === 'valid' ? 'bg-emerald-500/8 border-emerald-500/15' :
+    obj.integrityStatus === 'degraded' ? 'bg-amber-500/8 border-amber-500/15' :
+    obj.integrityStatus === 'corrupted' ? 'bg-rose-500/8 border-rose-500/15' : 'bg-slate-500/8 border-white/5';
 
   return (
-    <tr className="border-b border-border/30 hover:bg-white/2 transition-colors">
-      <td className="px-4 py-3 cursor-pointer" onClick={() => onSelect(obj)}>
-        <div className="font-medium text-slate-200 hover:text-cyan-400 transition-colors">{obj.name}</div>
-        <div className="text-xs text-slate-600 mono">{truncate(obj.id)}</div>
+    <motion.tr
+      className={`obj-row border-b border-white/[0.03] ${idx % 2 === 0 ? 'bg-transparent' : 'bg-white/[0.01]'}`}
+      initial={{ opacity: 0, x: -8 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: idx * 0.025, duration: 0.25 }}
+    >
+      <td className="px-5 py-3.5">
+        <button onClick={() => onSelect(obj)} className="text-left group">
+          <div className="font-medium text-slate-200 group-hover:text-vault-cyan transition-colors truncate max-w-[180px]">{obj.name}</div>
+          <div className="text-[10px] text-slate-600 mono mt-0.5">{truncate(obj.id, 12)}</div>
+        </button>
       </td>
-      <td className="px-4 py-3 text-slate-400 mono">{formatBytes(obj.logicalSize)}</td>
-      <td className="px-4 py-3 mono text-xs text-slate-500">{truncate(obj.checksum)}</td>
-      <td className="px-4 py-3">
-        <span className="mono text-xs">{validReplicas}/{obj.replicationFactor}</span>
-      </td>
-      <td className="px-4 py-3">
-        <span className={`text-xs font-medium ${statusColor}`}>{obj.integrityStatus}</span>
-      </td>
-      <td className="px-4 py-3">
-        <div className="flex gap-1">
-          <button onClick={() => onDownload(obj)} className="p-1.5 rounded hover:bg-white/5" title="Download">
-            <Download className="w-3.5 h-3.5 text-slate-400 hover:text-cyan-400 transition-colors" />
-          </button>
-          <button onClick={() => onVerify(obj.id)} className="p-1.5 rounded hover:bg-white/5" title="Verify">
-            <CheckCircle2 className="w-3.5 h-3.5 text-slate-400 hover:text-emerald-400 transition-colors" />
-          </button>
-          <button onClick={() => onDelete(obj.id)} className="p-1.5 rounded hover:bg-red-500/20" title="Delete">
-            <Trash2 className="w-3.5 h-3.5 text-slate-400 hover:text-rose-400 transition-colors" />
-          </button>
+      <td className="px-5 py-3.5"><span className="text-slate-400 mono text-xs">{formatBytes(obj.logicalSize)}</span></td>
+      <td className="px-5 py-3.5"><span className="mono text-[10px] text-slate-600">{truncate(obj.checksum, 10)}</span></td>
+      <td className="px-5 py-3.5">
+        <div className="flex items-center gap-1">
+          {Array.from({ length: obj.replicationFactor }).map((_, i) => (
+            <span key={i} className={`w-1.5 h-1.5 rounded-full ${i < validCount ? 'bg-emerald-400' : 'bg-slate-700'}`} />
+          ))}
+          <span className="mono text-[10px] text-slate-500 ml-1">{validCount}/{obj.replicationFactor}</span>
         </div>
       </td>
-    </tr>
+      <td className="px-5 py-3.5">
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${sbg} ${sc}`}>
+          {obj.integrityStatus}
+        </span>
+      </td>
+      <td className="px-5 py-3.5">
+        <div className="flex gap-1">
+          <RowBtn icon={Download} label="Download" onClick={() => onDownload(obj)} hover="hover:text-vault-cyan hover:bg-vault-cyan/8" />
+          <RowBtn icon={Scan} label="Verify" onClick={() => onVerify(obj.id)} hover="hover:text-emerald-400 hover:bg-emerald-500/8" />
+          <RowBtn icon={Trash2} label="Delete" onClick={() => onDelete(obj.id)} hover="hover:text-rose-400 hover:bg-rose-500/8" />
+        </div>
+      </td>
+    </motion.tr>
   );
 }
 
-// ─── Nodes View ────────────────────────────────────────────────────────────
+function RowBtn({ icon: Icon, label, onClick, hover }: {
+  icon: any; label: string; onClick: () => void; hover: string;
+}) {
+  return (
+    <button onClick={onClick} title={label}
+      className={`p-1.5 rounded-lg text-slate-500 transition-all duration-150 ${hover}`}>
+      <Icon className="w-3.5 h-3.5" />
+    </button>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NODES VIEW
+// ═══════════════════════════════════════════════════════════════════════════════
+
 function NodesView({ nodes, selectedNode, onSelectNode, onAction }: {
   nodes: Node[]; selectedNode: Node | null; onSelectNode: (n: Node) => void;
   onAction: (nodeId: string, action: string, extra?: Record<string, unknown>) => void;
 }) {
   return (
-    <div className="grid lg:grid-cols-3 gap-4">
-      <div className="lg:col-span-1 space-y-3">
+    <div className="grid lg:grid-cols-[320px_1fr] gap-4">
+      <div className="space-y-2">
+        <div className="section-label mb-3">Fleet ({nodes.length})</div>
         {nodes.map(node => (
-          <NodeCard
-            key={node.id} node={node} selected={selectedNode?.id === node.id}
+          <NodeTile key={node.id} node={node}
+            selected={selectedNode?.id === node.id}
             onClick={() => onSelectNode(node)}
           />
         ))}
       </div>
-      <div className="lg:col-span-2">
+      <div>
         {selectedNode ? (
-          <NodeDetailView node={selectedNode} onAction={onAction} />
+          <motion.div key={selectedNode.id}
+            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+            <NodeConsole node={selectedNode} onAction={onAction} />
+          </motion.div>
         ) : (
-          <div className="glass-panel rounded-xl p-12 text-center h-full flex items-center justify-center">
-            <div>
-              <Server className="w-12 h-12 text-slate-700 mx-auto mb-3" />
-              <p className="text-slate-500 text-sm">Select a node to view details</p>
-            </div>
-          </div>
+          <EmptyNodePanel />
         )}
       </div>
     </div>
   );
 }
 
-function NodeCard({ node, selected, onClick }: { node: Node; selected: boolean; onClick: () => void }) {
-  const statusColor = node.status === 'healthy' ? '#10b981' :
-                      node.status === 'offline' ? '#ef4444' :
-                      node.status === 'recovering' ? '#3b82f6' :
-                      node.status === 'corrupted' ? '#f43f5e' : '#f59e0b';
+function NodeTile({ node, selected, onClick }: {
+  node: Node; selected: boolean; onClick: () => void;
+}) {
+  const sc = nodeStatusColor(node.status);
+  const pct = Math.min(100, (node.usedBytes / node.capacityBytes) * 100);
 
   return (
-    <button
+    <motion.button
       onClick={onClick}
-      className={`w-full text-left glass-card rounded-xl p-4 transition-all ${
-        selected ? 'border-cyan-500/50 ring-1 ring-cyan-500/30' : ''
+      whileHover={{ x: 4 }}
+      whileTap={{ scale: 0.98 }}
+      className={`w-full text-left glass-card rounded-xl p-4 transition-all duration-200 relative overflow-hidden ${
+        selected ? 'ring-1 ring-vault-cyan/30 border-vault-cyan/20' : ''
       }`}
     >
-      <div className="flex items-center gap-3 mb-3">
-        <div className="w-3 h-3 rounded-full" style={{ background: statusColor, boxShadow: `0 0 8px ${statusColor}80` }} />
-        <span className="font-mono font-semibold text-sm">{node.id.toUpperCase()}</span>
-        <span className="text-xs text-slate-500 capitalize ml-auto">{node.status}</span>
+      {/* Left accent */}
+      <div className="absolute left-0 top-0 bottom-0 w-px" style={{ background: `linear-gradient(to bottom, ${sc}, transparent)` }} />
+
+      <div className="flex items-center gap-3 mb-3 pl-2">
+        <span className="status-dot" style={{ backgroundColor: sc, boxShadow: `0 0 8px ${sc}80` }} />
+        <span className="font-mono font-semibold text-sm text-slate-200">{node.id.toUpperCase()}</span>
+        <span className="text-[10px] text-slate-500 uppercase tracking-wider ml-auto font-medium">{node.status}</span>
       </div>
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        <div>
-          <span className="text-slate-500">Storage</span>
-          <div className="text-slate-300 mono">{formatBytes(node.usedBytes)} / {formatBytes(node.capacityBytes)}</div>
-          <div className="h-1 bg-slate-800 rounded-full mt-1 overflow-hidden">
-            <div className="h-full rounded-full transition-all"
-              style={{ width: `${Math.min(100, (node.usedBytes / node.capacityBytes) * 100)}%`, background: statusColor }} />
-          </div>
+
+      <div className="pl-2 space-y-2">
+        <div className="flex justify-between text-[10px] text-slate-500 mono">
+          <span>{formatBytes(node.usedBytes)} used</span>
+          <span>{pct.toFixed(0)}%</span>
         </div>
-        <div>
-          <span className="text-slate-500">Objects</span>
-          <div className="text-slate-300 mono">{node.objectCount}</div>
-          <span className="text-slate-500">Replicas: {node.replicaCount}</span>
+        <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+          <motion.div
+            className="h-full rounded-full"
+            style={{ width: `${pct}%`, backgroundColor: sc, opacity: 0.65 }}
+            initial={{ width: 0 }} animate={{ width: `${pct}%` }}
+            transition={{ duration: 0.6, ease: 'easeOut' }}
+          />
+        </div>
+        <div className="flex justify-between text-[10px] text-slate-600 mono pl-1">
+          <span>{node.objectCount} objects</span>
+          <span>{node.replicaCount} replicas</span>
         </div>
       </div>
+
       {node.partitions.length > 0 && (
-        <div className="mt-2 text-xs text-red-400 mono flex items-center gap-1">
+        <div className="mt-2 pl-2 text-[10px] text-red-400/70 mono flex items-center gap-1">
           <WifiOff className="w-3 h-3" /> Partitioned: {node.partitions.join(', ')}
         </div>
       )}
-    </button>
+    </motion.button>
   );
 }
 
-function NodeDetailView({ node, onAction }: { node: Node; onAction: (id: string, action: string, extra?: Record<string, unknown>) => void }) {
+function EmptyNodePanel() {
   return (
-    <div className="glass-panel rounded-xl p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className={`w-3 h-3 rounded-full ${
-            node.status === 'healthy' ? 'bg-emerald-400' :
-            node.status === 'offline' ? 'bg-red-400' :
-            node.status === 'recovering' ? 'bg-blue-400' : 'bg-amber-400'
-          }`} />
-          <h3 className="font-mono font-bold text-lg">{node.id.toUpperCase()}</h3>
-          <span className="text-sm text-slate-500 capitalize">{node.status}</span>
+    <div className="glass-panel rounded-2xl p-12 text-center h-full min-h-[400px] flex flex-col items-center justify-center">
+      <Network className="w-10 h-10 text-slate-700 mb-4 opacity-30" />
+      <p className="text-slate-500 text-sm">Select a node from the fleet to inspect its state and controls.</p>
+    </div>
+  );
+}
+
+function NodeConsole({ node, onAction }: {
+  node: Node; onAction: (id: string, action: string, extra?: Record<string, unknown>) => void;
+}) {
+  const sc = nodeStatusColor(node.status);
+  const freeBytes = Math.max(0, node.capacityBytes - node.usedBytes);
+  const pct = Math.min(100, (node.usedBytes / node.capacityBytes) * 100);
+
+  return (
+    <div className="space-y-4">
+      {/* Identity */}
+      <div className="glass-panel rounded-2xl p-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="status-dot animate-breath" style={{ backgroundColor: sc, boxShadow: `0 0 12px ${sc}60` }} />
+            <div>
+              <h3 className="font-mono font-bold text-base text-slate-100">{node.id.toUpperCase()}</h3>
+              <span className="text-[10px] text-slate-500 uppercase tracking-wider">{statusLabel(node.status)}</span>
+            </div>
+          </div>
+          <span className="text-[10px] text-slate-600 mono">{formatTs(node.lastHeartbeat)}</span>
         </div>
-        <span className="text-xs text-slate-600 mono">{formatTs(node.lastHeartbeat)}</span>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <InfoItem label="Capacity" value={formatBytes(node.capacityBytes)} />
-        <InfoItem label="Used" value={formatBytes(node.usedBytes)} />
-        <InfoItem label="Free" value={formatBytes(Math.max(0, node.capacityBytes - node.usedBytes))} />
-        <InfoItem label="Objects" value={String(node.objectCount)} />
+      {/* Capacity */}
+      <div className="glass-panel rounded-2xl p-5">
+        <div className="section-label mb-4">Capacity &amp; Storage</div>
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <MetricBox label="Total Capacity" value={formatBytes(node.capacityBytes)} />
+          <MetricBox label="Used" value={formatBytes(node.usedBytes)} accent="text-vault-cyan" />
+          <MetricBox label="Free" value={formatBytes(freeBytes)} accent="text-emerald-400" />
+          <MetricBox label="Objects" value={String(node.objectCount)} accent="text-violet-400" />
+        </div>
+        <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+          <motion.div
+            className="h-full rounded-full"
+            style={{ width: `${pct}%`, background: `linear-gradient(90deg, #06b6d4, #6366f1)` }}
+            initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.8, ease: 'easeOut' }}
+          />
+        </div>
+        <div className="flex justify-between text-[10px] text-slate-600 mono mt-1">
+          <span>0 B</span><span>{pct.toFixed(1)}%</span><span>{formatBytes(node.capacityBytes)}</span>
+        </div>
       </div>
 
-      <div className="border-t border-border pt-4">
-        <h4 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-3">Simulation Controls</h4>
+      {/* Simulation controls */}
+      <div className="glass-panel rounded-2xl p-5">
+        <div className="section-label mb-4">Simulation Controls</div>
         <div className="flex flex-wrap gap-2">
           {node.status !== 'offline' && (
-            <button onClick={() => onAction(node.id, 'fail')} className="btn-danger px-3 py-1.5 rounded-lg text-xs">
+            <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+              onClick={() => onAction(node.id, 'fail')} className="btn-danger px-4 py-2 rounded-xl text-xs font-medium">
               Take Offline
-            </button>
+            </motion.button>
           )}
           {node.status === 'offline' && (
-            <button onClick={() => onAction(node.id, 'recover')} className="btn-primary px-3 py-1.5 rounded-lg text-xs">
-              Recover
-            </button>
+            <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+              onClick={() => onAction(node.id, 'recover')} className="btn-primary px-4 py-2 rounded-xl text-xs font-medium">
+              Recover Node
+            </motion.button>
           )}
-          <button onClick={() => onAction(node.id, 'verify')} className="btn-ghost px-3 py-1.5 rounded-lg text-xs">
-            Verify
-          </button>
+          <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+            onClick={() => onAction(node.id, 'verify')} className="btn-ghost px-4 py-2 rounded-xl text-xs font-medium">
+            Verify Integrity
+          </motion.button>
         </div>
       </div>
 
-      {/* Partition controls */}
-      <div className="border-t border-border pt-4">
-        <h4 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-3">Network Partition</h4>
-        <div className="flex flex-wrap gap-2">
+      {/* Partitions */}
+      <div className="glass-panel rounded-2xl p-5">
+        <div className="section-label mb-4">Network Partitions</div>
+        <div className="grid grid-cols-2 gap-2">
           {['node-01', 'node-02', 'node-03', 'node-04']
             .filter(id => id !== node.id)
             .map(peerId => {
-              const isPartitioned = node.partitions.includes(peerId);
+              const part = node.partitions.includes(peerId);
               return (
-                <button
-                  key={peerId}
-                  onClick={() => isPartitioned
-                    ? onAction(node.id, 'heal', { peerId })
-                    : onAction(node.id, 'partition', { peerId })
-                  }
-                  className={`px-3 py-1.5 rounded-lg text-xs font-mono ${
-                    isPartitioned ? 'btn-danger' : 'btn-ghost'
-                  }`}
-                >
-                  {isPartitioned ? '✕' : '+'} {peerId}
-                </button>
+                <motion.button key={peerId} whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                  onClick={() => onAction(node.id, part ? 'heal' : 'partition', { peerId })}
+                  className={`px-3 py-2 rounded-xl text-xs font-mono flex items-center gap-2 transition-all ${
+                    part ? 'bg-red-500/10 border border-red-500/25 text-red-400' : 'btn-ghost'
+                  }`}>
+                  {part ? <WifiOff className="w-3 h-3" /> : <Wifi className="w-3 h-3" />}
+                  {peerId.toUpperCase()}
+                  <span className="ml-auto text-[10px] opacity-50">{part ? 'BREAK' : 'LINK'}</span>
+                </motion.button>
               );
             })}
         </div>
@@ -864,78 +1093,219 @@ function NodeDetailView({ node, onAction }: { node: Node; onAction: (id: string,
   );
 }
 
-function InfoItem({ label, value }: { label: string; value: string }) {
+function MetricBox({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
-    <div className="glass-card rounded-lg p-3">
-      <div className="text-xs text-slate-500 mb-1">{label}</div>
-      <div className="text-sm font-mono font-semibold text-slate-200">{value}</div>
+    <div className="glass-card rounded-xl p-3">
+      <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">{label}</div>
+      <div className={`text-sm font-mono font-semibold ${accent ?? 'text-slate-200'}`}>{value}</div>
     </div>
   );
 }
 
-// ─── Object Detail Modal ───────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// UPLOAD MODAL
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function UploadModal({
+  uploadName, setUploadName, uploadFile, setUploadFile,
+  replicationFactor, setReplicationFactor, healthyCount, onUpload, onClose,
+}: {
+  uploadName: string; setUploadName: (s: string) => void;
+  uploadFile: File | null; setUploadFile: (f: File | null) => void;
+  replicationFactor: number; setReplicationFactor: (n: number) => void;
+  healthyCount: number; onUpload: () => void; onClose: () => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md px-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <motion.div
+        initial={{ scale: 0.92, opacity: 0, y: 24 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.92, opacity: 0, y: 24 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+        className="glass-panel rounded-2xl p-6 w-full max-w-md shadow-2xl"
+      >
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-8 h-8 rounded-lg bg-vault-cyan/15 flex items-center justify-center border border-vault-cyan/25">
+            <Upload className="w-4 h-4 text-vault-cyan" />
+          </div>
+          <h2 className="text-base font-semibold text-slate-100">Upload Object</h2>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs text-slate-500 mb-1.5 uppercase tracking-wider">Object Name</label>
+            <input
+              value={uploadName} onChange={e => setUploadName(e.target.value)}
+              placeholder="my-object"
+              className="w-full bg-white/4 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm outline-none
+                focus:border-vault-cyan/40 focus:ring-1 focus:ring-vault-cyan/20 transition-all"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-slate-500 mb-1.5 uppercase tracking-wider">File</label>
+            <div
+              className="border-2 border-dashed border-white/8 rounded-xl p-5 text-center cursor-pointer
+                hover:border-vault-cyan/30 hover:bg-vault-cyan/3 transition-all duration-200"
+              onClick={() => document.getElementById('file-input')?.click()}
+            >
+              {uploadFile ? (
+                <div>
+                  <Download className="w-6 h-6 text-vault-cyan mx-auto mb-2 opacity-60" />
+                  <p className="text-sm text-slate-200 font-medium">{uploadFile.name}</p>
+                  <p className="text-xs text-slate-500 mono mt-1">{formatBytes(uploadFile.size)}</p>
+                </div>
+              ) : (
+                <div>
+                  <Upload className="w-6 h-6 text-slate-600 mx-auto mb-2" />
+                  <p className="text-sm text-slate-500">Click to select a file</p>
+                </div>
+              )}
+              <input id="file-input" type="file" className="hidden"
+                onChange={e => setUploadFile(e.target.files?.[0] || null)} />
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs text-slate-500 uppercase tracking-wider">Replication Factor</label>
+              <span className="text-[10px] text-slate-600 mono">{replicationFactor} / {healthyCount} nodes</span>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {[1, 2, 3, 4].map(n => {
+                const ok = n <= healthyCount;
+                const sel = replicationFactor === n;
+                return (
+                  <button key={n} onClick={() => setReplicationFactor(n)}
+                    className={`relative py-2.5 rounded-xl text-center transition-all duration-200 ${
+                      sel
+                        ? 'bg-vault-cyan/15 border border-vault-cyan/40 text-vault-cyan shadow-[0_0_20px_rgba(6,182,212,0.15)]'
+                        : ok
+                        ? 'bg-white/4 border border-white/8 text-slate-400 hover:border-white/15 hover:text-slate-300'
+                        : 'bg-white/2 border border-white/5 text-slate-700 cursor-not-allowed'
+                    }`}>
+                    <div className="text-lg font-bold font-mono">{n}</div>
+                    <div className="text-[9px] opacity-50 mt-0.5">{['Single','Dual','Triple','Quad'][n-1]}</div>
+                    {!ok && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full text-[8px] flex items-center justify-center text-white">!</span>}
+                  </button>
+                );
+              })}
+            </div>
+            {uploadFile && (
+              <div className="mt-2 p-2.5 rounded-xl bg-white/[0.03] border border-white/5 text-xs mono text-slate-400">
+                Plan:{' '}
+                {formatBytes(uploadFile.size)} × {replicationFactor}{' '}
+                <span className="text-vault-cyan/70">= {formatBytes(uploadFile.size * replicationFactor)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex gap-2 mt-6">
+          <button onClick={onClose} className="flex-1 btn-ghost py-2.5 rounded-xl text-sm">Cancel</button>
+          <button
+            onClick={onUpload}
+            disabled={!uploadFile || replicationFactor > healthyCount}
+            className="flex-1 btn-primary py-2.5 rounded-xl text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Upload
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OBJECT DETAIL MODAL
+// ═══════════════════════════════════════════════════════════════════════════════
+
 function ObjectDetailModal({ obj, nodes, onClose, onVerify, onDelete }: {
   obj: ObjectMeta; nodes: Node[]; onClose: () => void;
   onVerify: () => void; onDelete: () => void;
 }) {
   const nodeStatusMap = new Map(nodes.map(n => [n.id, n.status]));
+  const vc = obj.replicas.filter(r => r.status === 'valid').length;
+  const sc = obj.integrityStatus === 'valid' ? 'text-emerald-400' :
+    obj.integrityStatus === 'degraded' ? 'text-amber-400' : 'text-rose-400';
+  const sbg = obj.integrityStatus === 'valid' ? 'bg-emerald-500/10 border-emerald-500/20' :
+    obj.integrityStatus === 'degraded' ? 'bg-amber-500/10 border-amber-500/20' : 'bg-rose-500/10 border-rose-500/20';
 
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md px-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <motion.div
-        initial={{ scale: 0.95, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 20 }}
-        className="glass-panel rounded-xl p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto"
+        initial={{ scale: 0.94, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.94, opacity: 0, y: 20 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+        className="glass-panel rounded-2xl p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl"
       >
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <h2 className="text-lg font-semibold">{obj.name}</h2>
-            <p className="text-xs text-slate-500 mono mt-1">{truncate(obj.id)}</p>
+        {/* Header */}
+        <div className="flex items-start justify-between mb-5">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-vault-cyan/10 border border-vault-cyan/20 flex items-center justify-center">
+              <Database className="w-4 h-4 text-vault-cyan" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-slate-100">{obj.name}</h2>
+              <p className="text-[10px] text-slate-500 mono mt-0.5">{obj.id}</p>
+            </div>
           </div>
-          <button onClick={onClose} className="p-1 rounded hover:bg-white/10"><XCircle className="w-5 h-5 text-slate-400" /></button>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors">
+            <XCircle className="w-4 h-4 text-slate-500" />
+          </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <DetailField label="Size" value={formatBytes(obj.logicalSize)} />
-          <DetailField label="MIME" value={obj.mimeType} />
-          <DetailField label="Version" value={`v${obj.version}`} />
-          <DetailField label="Replication" value={`${obj.replicationFactor}×`} />
-          <DetailField
-            label="Valid Replicas"
-            value={`${obj.replicas.filter(r => r.status === 'valid').length}/${obj.replicationFactor}`}
-            color={obj.replicas.filter(r => r.status === 'valid').length === obj.replicationFactor ? 'text-emerald-400' : 'text-amber-400'}
-          />
-          <DetailField
-            label="Integrity"
-            value={obj.integrityStatus}
-            color={obj.integrityStatus === 'valid' ? 'text-emerald-400' : obj.integrityStatus === 'degraded' ? 'text-amber-400' : 'text-rose-400'}
-          />
+        {/* Metrics */}
+        <div className="grid grid-cols-3 gap-2 mb-5">
+          <DChip label="Size" value={formatBytes(obj.logicalSize)} />
+          <DChip label="Version" value={`v${obj.version}`} />
+          <DChip label="Integrity" value={obj.integrityStatus} className={sc} borderColor="border-white/10" />
         </div>
 
-        <div className="mb-4">
-          <div className="text-xs text-slate-500 uppercase tracking-wider mb-2">Checksum</div>
-          <div className="mono text-xs text-slate-400 bg-black/30 rounded p-2 break-all">{obj.checksum}</div>
+        {/* Checksum */}
+        <div className="mb-5">
+          <div className="section-label mb-2">Checksum (SHA-256)</div>
+          <div className="mono text-[10px] text-slate-400 bg-black/30 rounded-xl p-3 border border-white/5 break-all leading-relaxed">
+            {obj.checksum}
+          </div>
         </div>
 
-        <div className="mb-4">
-          <div className="text-xs text-slate-500 uppercase tracking-wider mb-2">Replicas</div>
+        {/* Replicas */}
+        <div className="mb-5">
+          <div className="section-label mb-2 flex items-center gap-2">
+            Replicas
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${sbg} ${sc}`}>
+              {vc}/{obj.replicationFactor} valid
+            </span>
+          </div>
           <div className="space-y-1">
             {obj.replicas.map((r, i) => {
-              const nStatus = nodeStatusMap.get(r.nodeId);
-              const rColor = r.status === 'valid' ? 'text-emerald-400' :
-                             r.status === 'corrupted' ? 'text-rose-400' :
-                             r.status === 'missing' ? 'text-slate-600' : 'text-amber-400';
-              const nColor = nStatus === 'offline' ? 'text-red-500' : nStatus === 'healthy' ? 'text-emerald-500' : 'text-slate-400';
+              const ns = nodeStatusMap.get(r.nodeId);
+              const off = ns === 'offline';
+              const rv = r.status === 'valid';
               return (
-                <div key={i} className="flex items-center gap-2 text-xs mono py-1.5 px-2 rounded bg-white/3 hover:bg-white/5 transition-colors">
-                  <span className={`w-2 h-2 rounded-full ${r.status === 'valid' ? 'bg-emerald-400' : r.status === 'corrupted' ? 'bg-rose-400' : 'bg-slate-600'}`} />
-                  <span className={nColor}>{r.nodeId.toUpperCase()}</span>
-                  <span className="text-slate-600">·</span>
-                  <span className={rColor}>{r.status}</span>
-                  <span className="text-slate-600">·</span>
+                <div key={i}
+                  className={`flex items-center gap-2.5 text-xs mono py-2 px-3 rounded-xl border transition-colors ${
+                    rv ? 'bg-emerald-500/5 border-emerald-500/10 text-slate-300' :
+                    off ? 'bg-red-500/5 border-red-500/10 text-slate-500' :
+                    'bg-white/[0.02] border-white/5 text-slate-400'
+                  }`}>
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${rv ? 'bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.6)]' : off ? 'bg-red-400' : 'bg-slate-600'}`} />
+                  <span className={off ? 'text-red-400/70' : rv ? 'text-slate-200' : 'text-slate-500'}>
+                    {r.nodeId.toUpperCase()}
+                  </span>
+                  <span className="text-slate-700">·</span>
+                  <span className={rv ? 'text-emerald-400/80' : 'text-slate-500'}>{r.status}</span>
+                  <span className="text-slate-700">·</span>
                   <span className="text-slate-500">{formatBytes(r.size)}</span>
                 </div>
               );
@@ -943,11 +1313,12 @@ function ObjectDetailModal({ obj, nodes, onClose, onVerify, onDelete }: {
           </div>
         </div>
 
-        <div className="flex gap-2 pt-4 border-t border-border">
-          <button onClick={onVerify} className="btn-ghost flex-1 py-2 rounded-lg text-sm flex items-center justify-center gap-2">
-            <CheckCircle2 className="w-4 h-4" /> Verify
+        {/* Actions */}
+        <div className="flex gap-2 pt-4 border-t border-white/6">
+          <button onClick={onVerify} className="btn-ghost flex-1 py-2.5 rounded-xl text-sm flex items-center justify-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Verify
           </button>
-          <button onClick={onDelete} className="btn-danger flex-1 py-2 rounded-lg text-sm flex items-center justify-center gap-2">
+          <button onClick={onDelete} className="btn-danger flex-1 py-2.5 rounded-xl text-sm flex items-center justify-center gap-2">
             <Trash2 className="w-4 h-4" /> Delete
           </button>
         </div>
@@ -956,40 +1327,13 @@ function ObjectDetailModal({ obj, nodes, onClose, onVerify, onDelete }: {
   );
 }
 
-function DetailField({ label, value, color }: { label: string; value: string; color?: string }) {
+function DChip({ label, value, className = '', borderColor = 'border-white/10' }: {
+  label: string; value: string; className?: string; borderColor?: string;
+}) {
   return (
-    <div className="glass-card rounded-lg p-2.5">
-      <div className="text-xs text-slate-500 mb-0.5">{label}</div>
-      <div className={`text-sm font-mono font-semibold ${color || 'text-slate-200'}`}>{value}</div>
-    </div>
-  );
-}
-
-// ─── Operation Row ─────────────────────────────────────────────────────────
-function OperationRow({ op }: { op: Operation }) {
-  const typeColors: Record<string, string> = {
-    upload: 'text-cyan-400', download: 'text-blue-400', replicate: 'text-violet-400',
-    repair: 'text-emerald-400', verify: 'text-amber-400', rebalance: 'text-sky-400',
-    fail: 'text-red-400', recover: 'text-blue-400', corrupt: 'text-rose-400',
-    partition: 'text-orange-400', delete: 'text-slate-400',
-  };
-  const typeIcons: Record<string, any> = {
-    upload: Upload, download: Download, replicate: ArrowRight,
-    repair: Wrench, verify: CheckCircle2, rebalance: Scale,
-    fail: XCircle, recover: RefreshCw, corrupt: AlertTriangle,
-    partition: WifiOff, delete: Trash2,
-  };
-  const Icon = typeIcons[op.type] || Activity;
-
-  return (
-    <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-white/3 transition-colors">
-      <Icon className={`w-4 h-4 shrink-0 ${typeColors[op.type] || 'text-slate-400'}`} />
-      <span className="text-xs text-slate-500 mono shrink-0">{formatTs(op.timestamp)}</span>
-      <span className={`text-xs font-medium capitalize shrink-0 ${typeColors[op.type] || 'text-slate-400'}`}>{op.type}</span>
-      <span className="text-xs text-slate-400 truncate">{op.description}</span>
-      <span className={`ml-auto text-xs ${op.status === 'completed' ? 'text-emerald-500' : op.status === 'failed' ? 'text-red-400' : 'text-slate-500'}`}>
-        {op.status}
-      </span>
+    <div className={`glass-card rounded-xl p-3 ${borderColor}`}>
+      <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">{label}</div>
+      <div className={`text-sm font-mono font-semibold ${className || 'text-slate-200'}`}>{value}</div>
     </div>
   );
 }
