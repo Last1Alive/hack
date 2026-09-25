@@ -38,10 +38,10 @@ export default function LoadingScreen({ onReady }: { onReady: () => void }) {
           key="loading"
           initial={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: 0.6, ease: [0.4, 0, 0.2, 1] } }}
-          className="fixed inset-0 z-[200] flex flex-col items-center justify-center overflow-hidden"
-          style={{ background: '#050a14' }}
+          className="fixed inset-0 z-[200] flex flex-col items-center justify-center overflow-hidden bg-[#040810]"
+          style={{ background: '#040810' }}
         >
-          {/* ── Deep atmospheric glow layers ── */}
+          {/* ── Atmospheric glow layers ── */}
           <motion.div
             animate={{ scale: [1, 1.08, 1], opacity: [0.2, 0.35, 0.2] }}
             transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
@@ -67,6 +67,18 @@ export default function LoadingScreen({ onReady }: { onReady: () => void }) {
             className="absolute w-[400px] h-[400px] rounded-full"
             style={{
               background: 'radial-gradient(circle, transparent 40%, rgba(220,38,38,0.06) 70%, transparent 100%)',
+              filter: 'blur(30px)',
+            }}
+          />
+
+          {/* ── Projector beam (Atheria-inspired): sweeps in and holds ── */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.15, rotate: 0 }}
+            animate={{ opacity: phase >= 0 ? 0.85 : 0, scale: phase >= 0 ? 2.2 : 0.15, rotate: 180 }}
+            transition={{ duration: 2.5, ease: 'easeOut' }}
+            className="absolute w-[1200px] h-[1200px] rounded-full"
+            style={{
+              background: 'conic-gradient(from 0deg at 50% 50%, transparent 0deg, rgba(56,189,248,0.35) 55deg, transparent 110deg, transparent 220deg, rgba(139,92,246,0.28) 290deg, transparent 360deg)',
               filter: 'blur(30px)',
             }}
           />
@@ -120,27 +132,23 @@ export default function LoadingScreen({ onReady }: { onReady: () => void }) {
             </motion.div>
           )}
 
-          {/* ── Floating particles ── */}
-          {Array.from({ length: 24 }).map((_, i) => (
-            <FloatingParticle key={i} index={i} phase={phase} />
-          ))}
-
           {/* ── Central emblem area ── */}
           <div className="relative z-10 mb-6">
 
             {/* ── Outer dotted ring (phase 1+) ── */}
             {phase >= 0 && (
               <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: phase >= 1 ? 0.35 : 0.08, scale: 1 }}
-                transition={{ duration: 1, ease: 'easeOut' }}
+                initial={{ opacity: 0, scale: 0.7 }}
+                animate={{ opacity: phase >= 1 ? 0.3 : 0.07, scale: 1 }}
+                transition={{ duration: 1.2, ease: [0.2, 0.9, 0.2, 1] }}
                 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
-                style={{ width: 260, height: 260 }}
+                style={{ width: 280, height: 280 }}
               >
-                <svg width="260" height="260" viewBox="0 0 260 260" className="animate-[spin_30s_linear_infinite] origin-center">
-                  <circle cx="130" cy="130" r="122" fill="none"
-                    stroke="rgba(56,189,248,0.15)" strokeWidth="0.6"
-                    strokeDasharray="2 8" />
+                <svg width="280" height="280" viewBox="0 0 280 280"
+                  className="animate-[spin_30s_linear_infinite] origin-center">
+                  <circle cx="140" cy="140" r="130" fill="none"
+                    stroke="rgba(56,189,248,0.18)" strokeWidth="0.6"
+                    strokeDasharray="2 9" />
                 </svg>
               </motion.div>
             )}
@@ -148,29 +156,45 @@ export default function LoadingScreen({ onReady }: { onReady: () => void }) {
             {/* ── Secondary dashed ring (phase 2+) ── */}
             {phase >= 1 && (
               <motion.div
-                initial={{ opacity: 0, scale: 0.85 }}
-                animate={{ opacity: phase >= 2 ? 0.4 : 0.1, scale: 1 }}
-                transition={{ duration: 1, ease: 'easeOut', delay: 0.2 }}
+                initial={{ opacity: 0, scale: 0.75 }}
+                animate={{ opacity: phase >= 2 ? 0.45 : 0.08, scale: 1 }}
+                transition={{ duration: 1.1, ease: [0.2, 0.9, 0.2, 1], delay: 0.15 }}
                 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
-                style={{ width: 210, height: 210 }}
+                style={{ width: 225, height: 225 }}
               >
-                <svg width="210" height="210" viewBox="0 0 210 210"
+                <svg width="225" height="225" viewBox="0 0 225 225"
                   className="animate-[spin_22s_linear_infinite_reverse] origin-center">
-                  <circle cx="105" cy="105" r="98" fill="none"
-                    stroke="rgba(139,92,246,0.18)" strokeWidth="0.8"
-                    strokeDasharray="6 5" />
+                  {/* Portal glow ring — inset + outer glow */}
+                  <circle cx="112.5" cy="112.5" r="102"
+                    fill="none" stroke="rgba(139,92,246,0.35)" strokeWidth="1.5"
+                    strokeDasharray="6 5"
+                    style={{
+                      filter: 'url(#ringGlow)',
+                      boxShadow: 'inset 0 0 30px rgba(139,92,246,0.15), 0 0 30px rgba(139,92,246,0.25)',
+                    }}
+                  />
                   {/* Tick marks */}
-                  {Array.from({ length: 24 }).map((_, i) => {
-                    const a = (i / 24) * Math.PI * 2;
-                    const r1 = 98, r2 = i % 6 === 0 ? 91 : 94;
+                  {Array.from({ length: 36 }).map((_, i) => {
+                    const a = (i / 36) * Math.PI * 2;
+                    const r1 = 102, r2 = i % 4 === 0 ? 94 : 97;
                     return (
                       <line key={i}
-                        x1={105 + Math.cos(a) * r1} y1={105 + Math.sin(a) * r1}
-                        x2={105 + Math.cos(a) * r2} y2={105 + Math.sin(a) * r2}
-                        stroke="rgba(139,92,246,0.2)" strokeWidth={i % 6 === 0 ? 1 : 0.5}
+                        x1={112.5 + Math.cos(a) * r1} y1={112.5 + Math.sin(a) * r1}
+                        x2={112.5 + Math.cos(a) * r2} y2={112.5 + Math.sin(a) * r2}
+                        stroke={`rgba(139,92,246,${i % 4 === 0 ? 0.45 : 0.2})`}
+                        strokeWidth={i % 4 === 0 ? 1.2 : 0.5}
                       />
                     );
                   })}
+                </svg>
+                {/* Glow filter defs embedded */}
+                <svg style={{ position: 'absolute', width: 0, height: 0 }}>
+                  <defs>
+                    <filter id="ringGlow">
+                      <feGaussianBlur stdDeviation="3" result="b" />
+                      <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+                    </filter>
+                  </defs>
                 </svg>
               </motion.div>
             )}
@@ -178,20 +202,31 @@ export default function LoadingScreen({ onReady }: { onReady: () => void }) {
             {/* ── Inner technical ring (phase 3+) ── */}
             {phase >= 2 && (
               <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: phase >= 3 ? 0.5 : 0.12, scale: 1 }}
-                transition={{ duration: 0.8, ease: 'easeOut', delay: 0.3 }}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: phase >= 3 ? 0.55 : 0.12, scale: 1 }}
+                transition={{ duration: 0.9, ease: [0.2, 0.9, 0.2, 1], delay: 0.25 }}
                 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
-                style={{ width: 165, height: 165 }}
+                style={{ width: 175, height: 175 }}
               >
-                <svg width="165" height="165" viewBox="0 0 165 165"
+                <svg width="175" height="175" viewBox="0 0 175 175"
                   className="animate-[spin_16s_linear_infinite] origin-center">
-                  <circle cx="82.5" cy="82.5" r="75" fill="none"
-                    stroke="rgba(56,189,248,0.22)" strokeWidth="0.5"
-                    strokeDasharray="12 4" />
-                  <circle cx="82.5" cy="82.5" r="68" fill="none"
-                    stroke="rgba(6,182,212,0.12)" strokeWidth="0.4"
-                    strokeDasharray="3 12" />
+                  <circle cx="87.5" cy="87.5" r="78" fill="none"
+                    stroke="rgba(56,189,248,0.28)" strokeWidth="0.8"
+                    strokeDasharray="12 4"
+                    style={{ filter: 'url(#ringGlow2)' }}
+                  />
+                  <circle cx="87.5" cy="87.5" r="70" fill="none"
+                    stroke="rgba(6,182,212,0.15)" strokeWidth="0.5"
+                    strokeDasharray="3 14"
+                  />
+                </svg>
+                <svg style={{ position: 'absolute', width: 0, height: 0 }}>
+                  <defs>
+                    <filter id="ringGlow2">
+                      <feGaussianBlur stdDeviation="2.5" result="b" />
+                      <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+                    </filter>
+                  </defs>
                 </svg>
               </motion.div>
             )}
@@ -201,83 +236,91 @@ export default function LoadingScreen({ onReady }: { onReady: () => void }) {
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ duration: 0.6, delay: 0.4 }}
+                transition={{ duration: 0.5, delay: 0.3 }}
                 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
-                style={{ width: 165, height: 165 }}
+                style={{ width: 175, height: 175 }}
               >
-                <svg width="165" height="165" viewBox="0 0 165 165">
-                  <circle cx="82.5" cy="82.5" r="75" fill="none"
-                    stroke="rgba(56,189,248,0.6)" strokeWidth="1.5"
-                    strokeDasharray="8 450" strokeLinecap="round"
-                    style={{ transformOrigin: '82.5px 82.5px', animation: 'spin 3s linear infinite' }}
-                    filter="url(#lg)"
+                <svg width="175" height="175" viewBox="0 0 175 175">
+                  <circle cx="87.5" cy="87.5" r="78" fill="none"
+                    stroke="rgba(56,189,248,0.7)" strokeWidth="1.8"
+                    strokeDasharray="10 500" strokeLinecap="round"
+                    style={{ transformOrigin: '87.5px 87.5px', animation: 'spin 3s linear infinite' }}
+                    filter="url(#ringGlow)"
                   />
-                  <defs>
-                    <filter id="lg">
-                      <feGaussianBlur stdDeviation="2" result="b" />
-                      <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
-                    </filter>
-                  </defs>
                 </svg>
               </motion.div>
             )}
 
-            {/* ── Second pulse opposite direction (phase 5+) ── */}
+            {/* ── Counter-pulse on secondary ring (phase 5+) ── */}
             {phase >= 4 && (
               <motion.div
                 initial={{ opacity: 0 }}
-                animate={{ opacity: 0.7 }}
-                transition={{ duration: 0.6 }}
+                animate={{ opacity: 0.75 }}
+                transition={{ duration: 0.5 }}
                 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
-                style={{ width: 210, height: 210 }}
+                style={{ width: 225, height: 225 }}
               >
-                <svg width="210" height="210" viewBox="0 0 210 210">
-                  <circle cx="105" cy="105" r="98" fill="none"
-                    stroke="rgba(139,92,246,0.5)" strokeWidth="1"
-                    strokeDasharray="5 580" strokeLinecap="round"
-                    style={{ transformOrigin: '105px 105px', animation: 'spin 4s linear infinite reverse' }}
-                    filter="url(#lg2)"
+                <svg width="225" height="225" viewBox="0 0 225 225">
+                  <circle cx="112.5" cy="112.5" r="102" fill="none"
+                    stroke="rgba(139,92,246,0.6)" strokeWidth="1.2"
+                    strokeDasharray="6 620" strokeLinecap="round"
+                    style={{ transformOrigin: '112.5px 112.5px', animation: 'spin 4s linear infinite reverse' }}
+                    filter="url(#ringGlow)"
                   />
-                  <defs>
-                    <filter id="lg2">
-                      <feGaussianBlur stdDeviation="2" result="b" />
-                      <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
-                    </filter>
-                  </defs>
                 </svg>
               </motion.div>
             )}
 
+            {/* ── Expanding ripple waves (Atheria-inspired) ── */}
+            {phase >= 1 && [0, 1, 2].map(i => (
+              <motion.div
+                key={`ripple-${i}`}
+                initial={{ scale: 0.5, opacity: 0.5 }}
+                animate={{ scale: 3.5, opacity: 0 }}
+                transition={{ duration: 3, delay: i * 0.5, repeat: Infinity, ease: 'easeOut' }}
+                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+                style={{
+                  width: 200, height: 200,
+                  border: `1px solid rgba(56,189,248,${0.25 - i * 0.06})`,
+                }}
+              />
+            ))}
+
             {/* ── Pulsing aura behind logo ── */}
             <motion.div
-              animate={{ scale: [1, 1.22, 1], opacity: [0.15, 0.35, 0.15] }}
+              animate={{ scale: [1, 1.25, 1], opacity: [0.12, 0.3, 0.12] }}
               transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[160px] h-[160px] rounded-full"
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[150px] h-[150px] rounded-full"
               style={{
-                background: 'radial-gradient(circle, rgba(56,189,248,0.12) 0%, rgba(99,102,241,0.05) 40%, transparent 70%)',
-                filter: 'blur(20px)',
+                background: 'radial-gradient(circle, rgba(56,189,248,0.15) 0%, rgba(99,102,241,0.06) 40%, transparent 70%)',
+                filter: 'blur(18px)',
               }}
             />
 
-            {/* ── Shield logo — large & centered ── */}
+            {/* ── Shield logo — emerges with blur→focus (Atheria-inspired) ── */}
             <motion.div
-              initial={{ scale: 0.7, opacity: 0 }}
-              animate={{ scale: phase >= 0 ? 1 : 0.7, opacity: 1 }}
-              transition={{ duration: 0.9, ease: [0.2, 0.8, 0.2, 1] }}
+              initial={{ scale: 0.6, opacity: 0, filter: 'blur(16px)' }}
+              animate={{ scale: phase >= 0 ? 1 : 0.6, opacity: phase >= 0 ? 1 : 0, filter: phase >= 1 ? 'blur(0px)' : 'blur(12px)' }}
+              transition={{ duration: 1.4, ease: [0.2, 0.8, 0.2, 1] }}
               className="relative"
             >
               <ShieldSVG size={112} phase={phase} />
-              {/* Subtle ground reflection */}
-              <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-[80px] h-3 rounded-full blur-md"
-                style={{ background: 'radial-gradient(ellipse, rgba(56,189,248,0.12) 0%, transparent 70%)' }}
+              {/* Ground reflection glow */}
+              <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-[100px] h-4 rounded-full blur-md"
+                style={{ background: 'radial-gradient(ellipse, rgba(56,189,248,0.15) 0%, transparent 70%)' }}
               />
             </motion.div>
           </div>
 
-          {/* ── Title ── */}
+          {/* ── Title — letter-spacing collapse (Atheria-inspired) ── */}
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: phase >= 0 ? 1 : 0, y: phase >= 0 ? 0 : 10 }}
+            initial={{ opacity: 0, letterSpacing: '0.5em', filter: 'blur(8px)' }}
+            animate={{
+              opacity: phase >= 0 ? 1 : 0,
+              letterSpacing: phase >= 2 ? '0.22em' : '0.5em',
+              filter: phase >= 2 ? 'blur(0px)' : 'blur(6px)',
+            }}
+            transition={{ duration: 1.6, ease: [0.2, 0.8, 0.2, 1] }}
             className="relative z-10 mb-1"
           >
             <span className="cinematic-title text-[38px] font-bold tracking-[0.22em]">
@@ -286,8 +329,9 @@ export default function LoadingScreen({ onReady }: { onReady: () => void }) {
           </motion.div>
 
           <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: phase >= 1 ? 0.35 : 0 }}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: phase >= 2 ? 0.4 : 0, y: phase >= 2 ? 0 : 6 }}
+            transition={{ duration: 1 }}
             className="text-[10px] tracking-[0.32em] uppercase text-slate-400 mb-8 relative z-10"
             style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
           >
@@ -350,15 +394,8 @@ export default function LoadingScreen({ onReady }: { onReady: () => void }) {
 
 function ShieldSVG({ size, phase }: { size: number; phase: number }) {
   const op = 0.55 + phase * 0.09;
-  const s = size;
-  const cx = s / 2;
-  const cy = (s + 8) / 2;
-  // Scale path coords to fit the requested size
-  const sc = s / 56;
-  const cyOff = (s + 8 - s) / 2; // small vertical adjust
-
   return (
-    <svg width={s} height={s + 8} viewBox="0 0 56 64" fill="none" className="drop-shadow-lg">
+    <svg width={size} height={size + 8} viewBox="0 0 56 64" fill="none" className="drop-shadow-lg">
       {/* Outer shield outline */}
       <motion.path
         d="M28 3L51 17V35C51 49 28 62 28 62S5 49 5 35V17L28 3Z"
@@ -409,36 +446,5 @@ function ShieldSVG({ size, phase }: { size: number; phase: number }) {
         />
       )}
     </svg>
-  );
-}
-
-function FloatingParticle({ index, phase }: { index: number; phase: number }) {
-  const angle = (index / 24) * Math.PI * 2;
-  const radius = 120 + (index % 5) * 22;
-  const hue = index % 3 === 0 ? '56,189,248' : index % 3 === 1 ? '139,92,246' : '99,102,241';
-  const size = 1 + (index % 3) * 0.6;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{
-        opacity: phase >= 1 ? [0.12, 0.45, 0.12] : 0,
-        x: Math.cos(angle) * radius,
-        y: Math.sin(angle) * radius * 0.42,
-      }}
-      transition={{
-        duration: 3 + (index % 5),
-        repeat: Infinity,
-        ease: 'easeInOut',
-        delay: index * 0.08,
-      }}
-      className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
-      style={{
-        width: size,
-        height: size,
-        background: `rgba(${hue},0.5)`,
-        boxShadow: `0 0 ${size * 5}px rgba(${hue},0.3)`,
-      }}
-    />
   );
 }
