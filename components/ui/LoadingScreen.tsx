@@ -2,166 +2,230 @@
 import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+// Phase timing — all relative delays in ms
 const PHASES = [
-  { text: 'INITIALIZING VAULT',       delay: 0    },
-  { text: 'DISCOVERING STORAGE FABRIC', delay: 600  },
-  { text: 'CONNECTING STORAGE NODES',   delay: 1200 },
-  { text: 'VERIFYING DATA INTEGRITY',   delay: 1800 },
-  { text: 'ESTABLISHING REPLICATION',   delay: 2400 },
-  { text: 'FABRIC ONLINE',              delay: 3000 },
+  { label: 'INITIALIZING VAULT',           delay: 400  },
+  { label: 'DISCOVERING STORAGE FABRIC',   delay: 1000 },
+  { label: 'CONNECTING STORAGE NODES',     delay: 1800 },
+  { label: 'VERIFYING DATA INTEGRITY',     delay: 2600 },
+  { label: 'ESTABLISHING REPLICATION',     delay: 3400 },
+  { label: 'FABRIC ONLINE',                delay: 4200 },
 ];
 
 export default function LoadingScreen({ onReady }: { onReady: () => void }) {
-  const [phase, setPhase] = useState(0);
-  const [done, setDone] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const [phase, setPhase] = useState(-1);
+  const [exit, setExit] = useState(false);
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
+    // Show first phase immediately
+    timers.current.push(setTimeout(() => setPhase(0), 100));
     PHASES.forEach((_, i) => {
-      timerRef.current.push(setTimeout(() => setPhase(i), PHASES[i].delay));
+      timers.current.push(setTimeout(() => setPhase(i + 1), PHASES[i].delay));
     });
     // Fade out after last phase
-    const exitDelay = Math.max(...PHASES.map(p => p.delay)) + 900;
-    timerRef.current.push(setTimeout(() => setDone(true), exitDelay));
-    timerRef.current.push(setTimeout(() => onReady(), exitDelay + 500));
-    return () => timerRef.current.forEach(clearTimeout);
+    const exitAt = Math.max(...PHASES.map(p => p.delay)) + 1000;
+    timers.current.push(setTimeout(() => setExit(true), exitAt));
+    timers.current.push(setTimeout(() => onReady(), exitAt + 600));
+    return () => timers.current.forEach(clearTimeout);
   }, []);
+
+  const progress = Math.min(100, ((phase + 1) / PHASES.length) * 100);
 
   return (
     <AnimatePresence>
-      {!done && (
+      {!exit && (
         <motion.div
+          key="loading"
           initial={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: 0.6, ease: [0.4, 0, 0.2, 1] } }}
           className="fixed inset-0 z-[200] flex flex-col items-center justify-center overflow-hidden"
-          style={{
-            background: 'radial-gradient(ellipse 70% 60% at 50% 45%, rgba(56,189,248,0.06) 0%, #050a14 65%)',
-          }}
+          style={{ background: '#050a14' }}
         >
-          {/* Ambient glow behind everything */}
+          {/* ── Ambient atmospheric glow ── */}
           <motion.div
             animate={{
-              scale: [1, 1.15, 1],
-              opacity: [0.3, 0.5, 0.3],
+              scale: [1, 1.12, 1],
+              opacity: [0.25, 0.45, 0.25],
             }}
-            transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-            className="absolute w-[800px] h-[800px] rounded-full"
+            transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
+            className="absolute w-[900px] h-[900px] rounded-full"
             style={{
-              background: 'radial-gradient(circle, rgba(99,102,241,0.12) 0%, rgba(56,189,248,0.05) 40%, transparent 70%)',
-              filter: 'blur(40px)',
+              background: 'radial-gradient(circle, rgba(99,102,241,0.10) 0%, rgba(56,189,248,0.04) 35%, transparent 65%)',
+              filter: 'blur(50px)',
             }}
           />
 
-          {/* VAULT Shield — crystal core */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.3, filter: 'blur(12px)' }}
-            animate={{
-              opacity: phase >= 3 ? 1 : 0.15,
-              scale: phase >= 3 ? 1 : 0.5,
-              filter: phase >= 3 ? 'blur(0px)' : 'blur(12px)',
-            }}
-            transition={{ duration: 1.2, ease: [0.2, 0.8, 0.2, 1] }}
-            className="relative z-10 mb-10"
-          >
-            {/* Outer ring */}
+          {/* ── Grid of storage nodes (appears at phase 2) ── */}
+          {phase >= 1 && (
             <motion.div
-              animate={{ rotate: phase >= 3 ? 360 : 0 }}
-              transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
-              className="absolute -inset-6"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: phase >= 2 ? 0.6 : 0.15 }}
+              className="absolute inset-0 flex items-center justify-center"
             >
-              <svg width="120" height="120" viewBox="0 0 120 120" className="w-[120px] h-[120px]">
-                <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(56,189,248,0.15)" strokeWidth="0.5" strokeDasharray="4 6" />
-                <circle cx="60" cy="60" r="48" fill="none" stroke="rgba(139,92,246,0.12)" strokeWidth="0.5" strokeDasharray="2 8" />
+              <svg width="420" height="320" viewBox="0 0 420 320" className="opacity-30">
+                {/* Connection lines */}
+                {[
+                  [70, 60, 350, 60], [70, 60, 70, 260], [70, 60, 350, 260],
+                  [350, 60, 70, 260], [350, 60, 350, 260], [70, 260, 350, 260],
+                ].map(([x1, y1, x2, y2], i) => (
+                  <motion.line
+                    key={i}
+                    x1={x1} y1={y1} x2={x2} y2={y2}
+                    stroke="rgba(56,189,248,0.25)"
+                    strokeWidth="0.8"
+                    strokeDasharray={phase >= 3 ? "none" : "6 4"}
+                    initial={{ pathLength: 0, opacity: 0 }}
+                    animate={{
+                      pathLength: phase >= 2 ? 1 : 0,
+                      opacity: phase >= 2 ? 0.5 : 0,
+                    }}
+                    transition={{ duration: 0.8, delay: i * 0.1, ease: 'easeOut' }}
+                  />
+                ))}
+                {/* Node dots */}
+                {[{ x: 70, y: 60, label: 'N1' }, { x: 350, y: 60, label: 'N2' },
+                  { x: 70, y: 260, label: 'N3' }, { x: 350, y: 260, label: 'N4' }].map((n, i) => (
+                  <motion.g key={i}>
+                    <motion.circle
+                      cx={n.x} cy={n.y} r="6"
+                      fill="rgba(56,189,248,0.15)"
+                      stroke="rgba(56,189,248,0.5)"
+                      strokeWidth="1"
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{
+                        scale: phase >= 2 ? 1 : 0,
+                        opacity: phase >= 2 ? 1 : 0,
+                      }}
+                      transition={{ delay: 0.4 + i * 0.12, duration: 0.5 }}
+                    />
+                    <motion.circle
+                      cx={n.x} cy={n.y} r="2"
+                      fill="rgba(56,189,248,0.8)"
+                      initial={{ scale: 0 }}
+                      animate={{ scale: phase >= 2 ? 1 : 0 }}
+                      transition={{ delay: 0.5 + i * 0.12 }}
+                    />
+                    <motion.text
+                      x={n.x} y={n.y + 20}
+                      textAnchor="middle"
+                      fill="rgba(148,163,184,0.4)"
+                      fontSize="9"
+                      fontFamily="monospace"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: phase >= 2 ? 0.5 : 0 }}
+                      transition={{ delay: 0.6 + i * 0.1 }}
+                    >
+                      {n.label}
+                    </motion.text>
+                  </motion.g>
+                ))}
               </svg>
             </motion.div>
+          )}
 
+          {/* ── Floating particles ── */}
+          {phase >= 0 && Array.from({ length: 20 }).map((_, i) => (
+            <FloatingParticle key={i} index={i} phase={phase} />
+          ))}
+
+          {/* ── Central Shield ── */}
+          <div className="relative z-10 mb-8">
+            {/* Pulsing aura */}
+            <motion.div
+              animate={{
+                scale: [1, 1.18, 1],
+                opacity: [0.2, 0.4, 0.2],
+              }}
+              transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
+              className="absolute -inset-12 rounded-full"
+              style={{
+                background: 'radial-gradient(circle, rgba(56,189,248,0.12) 0%, rgba(99,102,241,0.06) 40%, transparent 70%)',
+                filter: 'blur(24px)',
+              }}
+            />
+            {/* Rotating outer ring */}
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 18, repeat: Infinity, ease: 'linear' }}
+              className="absolute -inset-4"
+            >
+              <svg width="140" height="140" viewBox="0 0 140 140" className="w-[140px] h-[140px]">
+                <circle cx="70" cy="70" r="64" fill="none"
+                  stroke="rgba(56,189,248,0.12)" strokeWidth="0.5"
+                  strokeDasharray="3 7" />
+                <circle cx="70" cy="70" r="58" fill="none"
+                  stroke="rgba(139,92,246,0.10)" strokeWidth="0.5"
+                  strokeDasharray="2 9" />
+              </svg>
+            </motion.div>
             {/* Shield icon */}
-            <ShieldIcon size={56} intensity={phase} />
+            <ShieldSVG size={64} phase={phase} />
+          </div>
 
-            {/* Iridescent halo */}
-            {phase >= 2 && (
-              <>
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: [0.3, 0.6, 0.3], scale: [1, 1.08, 1] }}
-                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-                  className="absolute -inset-4 rounded-full blur-xl"
-                  style={{ background: 'radial-gradient(circle, rgba(56,189,248,0.2) 0%, rgba(139,92,246,0.1) 50%, transparent 70%)' }}
-                />
-              </>
-            )}
+          {/* ── Title ── */}
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: phase >= 0 ? 1 : 0, y: phase >= 0 ? 0 : 8 }}
+            className="relative z-10 mb-2"
+          >
+            <span className="text-3xl font-extrabold tracking-tight text-white/90"
+              style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+              VAULT
+            </span>
           </motion.div>
 
-          {/* Tagline */}
-          <AnimatePresence>
-            {phase >= 1 && (
-              <motion.div
-                initial={{ opacity: 0, letterSpacing: '0.5em' }}
-                animate={{ opacity: 1, letterSpacing: '0.35em' }}
-                exit={{ opacity: 0 }}
-                className="text-xs tracking-[0.35em] font-semibold text-slate-400 mb-8 uppercase"
-              >
-                Distributed Storage Fabric
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: phase >= 1 ? 0.4 : 0 }}
+            className="text-[10px] tracking-[0.3em] uppercase text-slate-400 mb-8 relative z-10"
+          >
+            Distributed Storage Fabric
+          </motion.p>
 
-          {/* Phase text */}
-          <div className="relative z-10 mb-12 h-6">
+          {/* ── Phase text ── */}
+          <div className="relative z-10 h-5 mb-6 flex items-center gap-3">
             <AnimatePresence mode="wait">
               <motion.div
                 key={phase}
-                initial={{ opacity: 0, y: 8 }}
+                initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.35 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.25 }}
                 className="flex items-center gap-3"
               >
-                <span className="mono text-[10px] text-vault-cyan/50 w-16 text-right">
-                  {String(phase).padStart(2, '0')}
+                <span className="mono text-[10px] text-vault-cyan/40 w-12 text-right tabular-nums">
+                  {String(Math.max(0, phase)).padStart(2, '0')}
                 </span>
-                <span className="text-sm tracking-[0.25em] text-slate-300 font-medium uppercase">
-                  {PHASES[phase]?.text}
+                <span className="text-xs tracking-[0.22em] text-slate-300 font-medium uppercase">
+                  {phase >= 0 && phase <= 5 ? PHASES[phase - 1]?.label ?? '' : 'FABRIC ONLINE'}
                 </span>
                 {phase >= 5 && (
-                  <motion.span
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="ml-3 px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/15 text-emerald-400 border border-emerald-500/25"
-                  >
+                  <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/12 text-emerald-400 border border-emerald-500/20 animate-breath">
                     LIVE
-                  </motion.span>
+                  </span>
                 )}
               </motion.div>
             </AnimatePresence>
           </div>
 
-          {/* Progress bar */}
-          <div className="relative z-10 w-64 h-px bg-white/5 rounded-full overflow-hidden">
+          {/* ── Progress bar ── */}
+          <div className="relative z-10 w-56 h-px bg-white/8 rounded-full overflow-hidden mb-6">
             <motion.div
               className="h-full rounded-full"
-              style={{ background: 'linear-gradient(90deg, rgba(56,189,248,0.8), rgba(139,92,246,0.6))' }}
-              animate={{ width: `${Math.min(100, ((phase + 1) / PHASES.length) * 100)}%` }}
-              transition={{ duration: 0.4 }}
+              style={{ background: 'linear-gradient(90deg, #06b6d4, #6366f1)' }}
+              animate={{ width: `${progress}%` }}
+              transition={{ duration: 0.3, ease: 'easeOut' }}
             />
           </div>
 
-          {/* Floating particles around shield */}
-          {phase >= 2 && (
-            <>
-              {Array.from({ length: 24 }).map((_, i) => (
-                <FloatingParticle key={i} index={i} active={phase >= 2} />
-              ))}
-            </>
-          )}
-
-          {/* Bottom text */}
+          {/* ── Bottom brand ── */}
           <motion.p
             initial={{ opacity: 0 }}
-            animate={{ opacity: phase >= 4 ? 0.35 : 0 }}
-            className="absolute bottom-10 text-[10px] text-slate-500 tracking-[0.3em] uppercase"
+            animate={{ opacity: phase >= 4 ? 0.3 : 0 }}
+            className="absolute bottom-8 text-[10px] text-slate-500 tracking-[0.3em] uppercase relative z-10"
           >
-            Aether Systems — Fault-Tolerant Architecture
+            Fault-Tolerant Architecture
           </motion.p>
         </motion.div>
       )}
@@ -169,77 +233,91 @@ export default function LoadingScreen({ onReady }: { onReady: () => void }) {
   );
 }
 
-function ShieldIcon({ size, intensity }: { size: number; intensity: number }) {
-  const opacity = 0.5 + (intensity * 0.12);
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function ShieldSVG({ size, phase }: { size: number; phase: number }) {
+  const op = 0.55 + phase * 0.09;
   return (
-    <svg width={size} height={size} viewBox="0 0 56 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      {/* Outer glow */}
+    <svg width={size} height={size + 8} viewBox="0 0 56 64" fill="none">
+      {/* Outer shield outline */}
       <motion.path
-        d="M28 2L52 16V34C52 48 28 62 28 62S4 48 4 34V16L28 2Z"
-        stroke={`rgba(56,189,248,${opacity * 0.3})`}
-        strokeWidth="1"
-        fill={`rgba(56,189,248,${opacity * 0.06})`}
+        d="M28 3L51 17V35C51 49 28 62 28 62S5 49 5 35V17L28 3Z"
+        stroke={`rgba(56,189,248,${Math.min(op + 0.1, 0.8)})`}
+        strokeWidth="1.4"
+        fill={`rgba(56,189,248,${Math.min(op * 0.06, 0.12)})`}
+        initial={{ pathLength: 0, opacity: 0 }}
+        animate={{ pathLength: 1, opacity: 1 }}
+        transition={{ duration: 0.9, ease: 'easeOut' }}
       />
-      {/* Main shield */}
+      {/* Inner shield */}
       <motion.path
-        d="M28 2L52 16V34C52 48 28 62 28 62S4 48 4 34V16L28 2Z"
-        stroke={`rgba(56,189,248,${opacity * 0.7})`}
-        strokeWidth="1.5"
+        d="M28 15L42 24V36C42 44 28 52 28 52S14 44 14 36V24L28 15Z"
+        stroke={`rgba(56,189,248,${Math.min(op * 0.6, 0.5)})`}
+        strokeWidth="0.8"
         fill="none"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: phase >= 1 ? 1 : 0 }}
+        transition={{ duration: 0.7, delay: 0.3 }}
       />
-      {/* Inner vault symbol */}
-      <motion.path
-        d="M28 14L40 22V34C40 42 28 50 28 50S16 42 16 34V22L28 14Z"
-        stroke={`rgba(56,189,248,${opacity * 0.5})`}
-        strokeWidth="1"
-        fill={`rgba(56,189,248,${opacity * 0.04})`}
-      />
-      {/* Lock shape */}
+      {/* Lock body */}
       <motion.rect
-        x="23" y="28" width="10" height="8" rx="1.5"
-        stroke={`rgba(56,189,248,${opacity * 0.9})`}
+        x="22" y="30" width="12" height="9" rx="1.5"
+        stroke={`rgba(56,189,248,${Math.min(op + 0.15, 0.85)})`}
         strokeWidth="1.2"
-        fill={`rgba(56,189,248,${opacity * 0.1})`}
+        fill={`rgba(56,189,248,${Math.min(op * 0.1, 0.15)})`}
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: phase >= 2 ? 1 : 0, scale: phase >= 2 ? 1 : 0.8 }}
+        transition={{ duration: 0.5, delay: 0.5 }}
       />
+      {/* Lock shackle */}
       <motion.path
-        d="M25 28V24C25 22.8954 25.8954 22 27 22H29C30.1046 22 31 22.8954 31 24V28"
-        stroke={`rgba(56,189,248,${opacity * 0.9})`}
+        d="M24 30V26C24 24.9 24.9 24 26 24H30C31.1 24 32 24.9 32 26V30"
+        stroke={`rgba(56,189,248,${Math.min(op + 0.15, 0.85)})`}
         strokeWidth="1.2"
         fill="none"
+        initial={{ pathLength: 0 }}
+        animate={{ pathLength: phase >= 2 ? 1 : 0 }}
+        transition={{ duration: 0.5, delay: 0.6 }}
       />
-      {/* Keyhole dot */}
-      <motion.circle cx="28" cy="32" r="1" fill={`rgba(56,189,248,${opacity})`} />
+      {/* Keyhole */}
+      {phase >= 3 && (
+        <motion.circle cx="28" cy="34.5" r="1.2"
+          fill="rgba(56,189,248,0.9)"
+          initial={{ opacity: 0, scale: 0 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.3 }}
+        />
+      )}
     </svg>
   );
 }
 
-function FloatingParticle({ index, active }: { index: number; active: boolean }) {
-  const angle = (index / 24) * Math.PI * 2;
-  const radius = 90 + (index % 5) * 20;
-  const colors = ['rgba(56,189,248,', 'rgba(139,92,246,', 'rgba(99,102,241,'];
-  const color = colors[index % colors.length];
-  const size = 1.5 + (index % 3);
+function FloatingParticle({ index, phase }: { index: number; phase: number }) {
+  const angle = (index / 20) * Math.PI * 2;
+  const radius = 100 + (index % 4) * 25;
+  const hue = index % 3 === 0 ? '56,189,248' : index % 3 === 1 ? '139,92,246' : '99,102,241';
+  const size = 1.2 + (index % 3) * 0.8;
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{
-        opacity: active ? [0.2, 0.7, 0.2] : 0,
+        opacity: phase >= 1 ? [0.15, 0.5, 0.15] : 0,
         x: Math.cos(angle) * radius,
-        y: Math.sin(angle) * radius * 0.5,
+        y: Math.sin(angle) * radius * 0.45,
       }}
       transition={{
-        duration: 2 + (index % 3),
+        duration: 2.5 + (index % 4),
         repeat: Infinity,
         ease: 'easeInOut',
-        delay: index * 0.08,
+        delay: index * 0.1,
       }}
       className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
       style={{
         width: size,
         height: size,
-        background: color + '0.6)',
-        boxShadow: `0 0 ${size * 3}px ${color}0.4)`,
+        background: `rgba(${hue},0.5)`,
+        boxShadow: `0 0 ${size * 4}px rgba(${hue},0.3)`,
       }}
     />
   );
