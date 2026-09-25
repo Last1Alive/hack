@@ -123,6 +123,7 @@ export default function VaultApp() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!confirm('Delete this object? All replicas will be permanently removed.')) return;
     try {
       const res = await fetch(`/api/objects/${id}`, { method: 'DELETE' });
       if (res.ok) { toast.success('Object deleted'); await refresh(); }
@@ -182,11 +183,22 @@ export default function VaultApp() {
 
   const handleDownload = async (obj: ObjectMeta) => {
     try {
-      const res = await fetch(`/api/objects/${obj.id}`, { method: 'GET' });
-      // We can't directly stream from Next.js API in browser easily
-      // Instead just trigger a toast
-      toast.info(`Downloading ${obj.name}...`);
-      // Re-fetch via a blob endpoint would be ideal, but keeping it simple
+      const res = await fetch(`/api/objects/${obj.id}/download`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || 'Download failed');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = obj.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success(`Downloaded ${obj.name}`);
     } catch { toast.error('Download failed'); }
   };
 
@@ -265,6 +277,7 @@ export default function VaultApp() {
               onDelete={handleDelete}
               onVerify={handleVerify}
               onDownload={handleDownload}
+              onSelect={setSelectedObject}
               uploading={false}
             />
           )}
@@ -609,9 +622,10 @@ function NodeNetwork({ nodes }: { nodes: Node[] }) {
 }
 
 // ─── Objects View ──────────────────────────────────────────────────────────
-function ObjectsView({ objects, onUploadOpen, onDelete, onVerify, onDownload, uploading }: {
+function ObjectsView({ objects, onUploadOpen, onDelete, onVerify, onDownload, onSelect, uploading }: {
   objects: ObjectMeta[]; onUploadOpen: () => void; onDelete: (id: string) => void;
-  onVerify: (id: string) => void; onDownload: (obj: ObjectMeta) => void; uploading: boolean;
+  onVerify: (id: string) => void; onDownload: (obj: ObjectMeta) => void;
+  onSelect: (obj: ObjectMeta) => void; uploading: boolean;
 }) {
   const [search, setSearch] = useState('');
 
@@ -655,7 +669,7 @@ function ObjectsView({ objects, onUploadOpen, onDelete, onVerify, onDownload, up
             </thead>
             <tbody>
               {filtered.map(obj => (
-                <ObjectRow key={obj.id} obj={obj} onDelete={onDelete} onVerify={onVerify} onDownload={onDownload} />
+                <ObjectRow key={obj.id} obj={obj} onDelete={onDelete} onVerify={onVerify} onDownload={onDownload} onSelect={onSelect} />
               ))}
             </tbody>
           </table>
@@ -665,9 +679,9 @@ function ObjectsView({ objects, onUploadOpen, onDelete, onVerify, onDownload, up
   );
 }
 
-function ObjectRow({ obj, onDelete, onVerify, onDownload }: {
+function ObjectRow({ obj, onDelete, onVerify, onDownload, onSelect }: {
   obj: ObjectMeta; onDelete: (id: string) => void; onVerify: (id: string) => void;
-  onDownload: (obj: ObjectMeta) => void;
+  onDownload: (obj: ObjectMeta) => void; onSelect: (obj: ObjectMeta) => void;
 }) {
   const statusColor = obj.integrityStatus === 'valid' ? 'text-emerald-400' :
                       obj.integrityStatus === 'degraded' ? 'text-amber-400' :
@@ -676,9 +690,9 @@ function ObjectRow({ obj, onDelete, onVerify, onDownload }: {
   const validReplicas = obj.replicas.filter(r => r.status === 'valid').length;
 
   return (
-    <tr className="border-b border-border/30 hover:bg-white/2 transition-colors group">
-      <td className="px-4 py-3">
-        <div className="font-medium text-slate-200">{obj.name}</div>
+    <tr className="border-b border-border/30 hover:bg-white/2 transition-colors">
+      <td className="px-4 py-3 cursor-pointer" onClick={() => onSelect(obj)}>
+        <div className="font-medium text-slate-200 hover:text-cyan-400 transition-colors">{obj.name}</div>
         <div className="text-xs text-slate-600 mono">{truncate(obj.id)}</div>
       </td>
       <td className="px-4 py-3 text-slate-400 mono">{formatBytes(obj.logicalSize)}</td>
@@ -690,15 +704,15 @@ function ObjectRow({ obj, onDelete, onVerify, onDownload }: {
         <span className={`text-xs font-medium ${statusColor}`}>{obj.integrityStatus}</span>
       </td>
       <td className="px-4 py-3">
-        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex gap-1">
           <button onClick={() => onDownload(obj)} className="p-1.5 rounded hover:bg-white/5" title="Download">
-            <Download className="w-3.5 h-3.5 text-slate-400" />
+            <Download className="w-3.5 h-3.5 text-slate-400 hover:text-cyan-400 transition-colors" />
           </button>
           <button onClick={() => onVerify(obj.id)} className="p-1.5 rounded hover:bg-white/5" title="Verify">
-            <CheckCircle2 className="w-3.5 h-3.5 text-slate-400" />
+            <CheckCircle2 className="w-3.5 h-3.5 text-slate-400 hover:text-emerald-400 transition-colors" />
           </button>
           <button onClick={() => onDelete(obj.id)} className="p-1.5 rounded hover:bg-red-500/20" title="Delete">
-            <Trash2 className="w-3.5 h-3.5 text-slate-400 hover:text-rose-400" />
+            <Trash2 className="w-3.5 h-3.5 text-slate-400 hover:text-rose-400 transition-colors" />
           </button>
         </div>
       </td>
