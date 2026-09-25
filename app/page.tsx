@@ -316,10 +316,40 @@ export default function VaultApp() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-400 mb-1">Replication Factor: {replicationFactor}</label>
-                    <input type="range" min={1} max={nodes.filter(n => n.status !== 'offline').length} value={replicationFactor}
-                      onChange={e => setReplicationFactor(parseInt(e.target.value))}
-                      className="w-full accent-cyan-500" />
+                    <div className="flex items-center gap-2 mb-1">
+                      <label className="text-sm text-slate-400">Replication Factor</label>
+                      <span className="text-xs text-slate-600 italic">(copies per object)</span>
+                    </div>
+                    <div className="text-xs text-slate-500 mb-2">
+                      Number of independent nodes that will each store a complete copy of this object.
+                    </div>
+                    <div className="grid grid-cols-4 gap-2 mb-2">
+                      {[1, 2, 3, 4].map(n => (
+                        <button key={n} onClick={() => setReplicationFactor(n)}
+                          className={`py-2 rounded-lg text-sm font-mono transition-all ${
+                            replicationFactor === n
+                              ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50'
+                              : 'bg-white/5 text-slate-500 border border-border hover:border-slate-600'
+                          }`}>
+                          <div className="text-base">{n}</div>
+                          <div className="text-xs opacity-60">{['Single','Dual','Triple','Quadruple'][n-1]}</div>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-slate-500 mono">
+                      <span>Available healthy nodes: {nodes.filter(n => n.status === 'healthy').length}</span>
+                      <span className={replicationFactor > nodes.filter(n => n.status === 'healthy').length ? 'text-rose-400' : 'text-emerald-400'}>
+                        {replicationFactor <= nodes.filter(n => n.status === 'healthy').length
+                          ? '✓ Can satisfy request'
+                          : '✗ Not enough nodes'}
+                      </span>
+                    </div>
+                    {uploadFile && replicationFactor <= 4 && (
+                      <div className="mt-2 p-2 rounded bg-white/3 text-xs mono text-slate-400">
+                        Storage plan: {formatBytes(uploadFile.size)} × {replicationFactor} ={' '}
+                        <span className="text-cyan-400">{formatBytes(uploadFile.size * replicationFactor)}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-2 mt-6">
@@ -392,19 +422,49 @@ function DashboardView({
       </div>
 
       {/* Cluster Visualization */}
-      <div className="glass-panel rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Storage Fabric</h2>
-          <div className="flex gap-2">
-            <button onClick={onRebalance} className="btn-ghost px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5">
-              <Scale className="w-3.5 h-3.5" /> Rebalance
-            </button>
-            <button onClick={onVerifyAll} disabled={verifying} className="btn-ghost px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5" /> {verifying ? 'Scanning...' : 'Verify All'}
-            </button>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Cluster Visualization */}
+        <div className="glass-panel rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400">Storage Fabric</h2>
+            <div className="flex gap-2">
+              <button onClick={onRebalance} className="btn-ghost px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5">
+                <Scale className="w-3.5 h-3.5" /> Rebalance
+              </button>
+              <button onClick={onVerifyAll} disabled={verifying} className="btn-ghost px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" /> {verifying ? 'Scanning...' : 'Verify All'}
+              </button>
+            </div>
+          </div>
+          <NodeNetwork nodes={nodes} />
+        </div>
+
+        {/* Storage Summary */}
+        <div className="glass-panel rounded-xl p-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400 mb-4">Storage Overview</h2>
+          <div className="space-y-3">
+            <StorageBar label="Logical" value={health.logicalSize} total={health.physicalSize} color="text-cyan-400" />
+            <StorageBar label="Physical" value={health.physicalSize} total={health.physicalSize} color="text-blue-400" />
+            <div className="pt-2 border-t border-border">
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-500">Replication Overhead</span>
+                <span className="mono text-slate-300">{health.storageOverhead.toFixed(2)}×</span>
+              </div>
+              <div className="flex justify-between text-xs mt-1">
+                <span className="text-slate-500">Under-replicated</span>
+                <span className={`mono ${health.underReplicated > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {health.underReplicated} object(s)
+                </span>
+              </div>
+              <div className="flex justify-between text-xs mt-1">
+                <span className="text-slate-500">Corrupted</span>
+                <span className={`mono ${health.corrupted > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                  {health.corrupted} object(s)
+                </span>
+              </div>
+            </div>
           </div>
         </div>
-        <NodeNetwork nodes={nodes} />
       </div>
 
       {/* Recent Operations */}
@@ -461,6 +521,21 @@ function SkeletonDashboard() {
       </div>
       <div className="glass-card rounded-xl p-6"><div className="shimmer h-40 rounded" /></div>
       <div className="glass-card rounded-xl p-6"><div className="shimmer h-32 rounded" /></div>
+    </div>
+  );
+}
+
+function StorageBar({ label, value, total, color }: { label: string; value: number; total: number; color: string }) {
+  const pct = total > 0 ? Math.min(100, (value / total) * 100) : 0;
+  return (
+    <div>
+      <div className="flex justify-between text-xs mb-1">
+        <span className="text-slate-500">{label}</span>
+        <span className={`mono font-semibold ${color}`}>{formatBytes(value)}</span>
+      </div>
+      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full transition-all ${color.replace('text-', 'bg-')}`} style={{ width: `${pct}%` }} />
+      </div>
     </div>
   );
 }
@@ -723,8 +798,8 @@ function NodeDetailView({ node, onAction }: { node: Node; onAction: (id: string,
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <InfoItem label="Capacity" value={formatBytes(node.capacityBytes)} />
         <InfoItem label="Used" value={formatBytes(node.usedBytes)} />
+        <InfoItem label="Free" value={formatBytes(Math.max(0, node.capacityBytes - node.usedBytes))} />
         <InfoItem label="Objects" value={String(node.objectCount)} />
-        <InfoItem label="Replicas" value={String(node.replicaCount)} />
       </div>
 
       <div className="border-t border-border pt-4">
@@ -814,7 +889,11 @@ function ObjectDetailModal({ obj, nodes, onClose, onVerify, onDelete }: {
           <DetailField label="MIME" value={obj.mimeType} />
           <DetailField label="Version" value={`v${obj.version}`} />
           <DetailField label="Replication" value={`${obj.replicationFactor}×`} />
-          <DetailField label="Chunks" value={String(obj.chunks.length)} />
+          <DetailField
+            label="Valid Replicas"
+            value={`${obj.replicas.filter(r => r.status === 'valid').length}/${obj.replicationFactor}`}
+            color={obj.replicas.filter(r => r.status === 'valid').length === obj.replicationFactor ? 'text-emerald-400' : 'text-amber-400'}
+          />
           <DetailField
             label="Integrity"
             value={obj.integrityStatus}
@@ -840,8 +919,6 @@ function ObjectDetailModal({ obj, nodes, onClose, onVerify, onDelete }: {
                 <div key={i} className="flex items-center gap-2 text-xs mono py-1.5 px-2 rounded bg-white/3 hover:bg-white/5 transition-colors">
                   <span className={`w-2 h-2 rounded-full ${r.status === 'valid' ? 'bg-emerald-400' : r.status === 'corrupted' ? 'bg-rose-400' : 'bg-slate-600'}`} />
                   <span className={nColor}>{r.nodeId.toUpperCase()}</span>
-                  <span className="text-slate-600">chunk</span>
-                  <span className="text-slate-400">{r.chunkIndex}</span>
                   <span className="text-slate-600">·</span>
                   <span className={rColor}>{r.status}</span>
                   <span className="text-slate-600">·</span>

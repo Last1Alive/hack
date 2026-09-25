@@ -11,14 +11,19 @@ export interface Node {
   objectCount: number;
   replicaCount: number;
   lastHeartbeat: string;
-  partitions: string[];  // node IDs this node cannot reach
+  partitions: string[];
 }
 
 export type ReplicaStatus = 'valid' | 'corrupted' | 'missing' | 'stale';
 
+/**
+ * A logical replica is ONE complete copy of an object on ONE node.
+ * The old chunk-based model created N×M rows for N chunks and M nodes,
+ * which caused the UI to display "453/3" instead of "3/3".
+ * This version treats each (objectId + nodeId) pair as exactly one replica.
+ */
 export interface Replica {
   nodeId: string;
-  chunkIndex: number;
   path: string;
   checksum: string;
   size: number;
@@ -28,32 +33,18 @@ export interface Replica {
   updatedAt: string;
 }
 
-export type Chunk = {
-  index: number;
-  data: Buffer;
-  checksum: string;
-  size: number;
-};
-
 export interface ObjectMetadata {
   id: string;
   name: string;
   mimeType: string;
-  logicalSize: number;
-  checksum: string;
+  logicalSize: number;       // size of the original object data
+  checksum: string;          // SHA-256 of the full object
   version: number;
-  replicationFactor: number;
-  chunks: ChunkMeta[];
-  replicas: Replica[];
+  replicationFactor: number; // how many nodes should hold a copy
+  replicas: Replica[];       // ONE entry per node that holds a copy
   integrityStatus: 'valid' | 'degraded' | 'corrupted' | 'inconsistent';
   createdAt: string;
   updatedAt: string;
-}
-
-export interface ChunkMeta {
-  index: number;
-  checksum: string;
-  size: number;
 }
 
 export type OperationType = 'upload' | 'download' | 'replicate' | 'repair' | 'verify' | 'rebalance' | 'fail' | 'recover' | 'corrupt' | 'partition' | 'delete';
@@ -75,28 +66,12 @@ export interface ClusterConfig {
   readPolicy: 'any' | 'quorum' | 'verified';
 }
 
-export const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB chunks for demo
 export const DEFAULT_REPLICATION_FACTOR = 3;
 export const DEFAULT_WRITE_POLICY: 'one' | 'majority' | 'all' = 'majority';
 export const DEFAULT_READ_POLICY: 'any' | 'quorum' | 'verified' = 'quorum';
 
 export function computeChecksum(data: Buffer): string {
-  const crypto = require('crypto');
-  return crypto.createHash('sha256').update(data).digest('hex');
-}
-
-export function chunkData(data: Buffer, chunkSize: number = CHUNK_SIZE): Chunk[] {
-  const chunks: Chunk[] = [];
-  for (let i = 0; i < data.length; i += chunkSize) {
-    const chunk = data.slice(i, i + chunkSize);
-    const checksum = computeChecksum(chunk);
-    chunks.push({ index: chunks.length, data: chunk, checksum, size: chunk.length });
-  }
-  if (chunks.length === 0 && data.length > 0) {
-    const checksum = computeChecksum(data);
-    chunks.push({ index: 0, data, checksum, size: data.length });
-  }
-  return chunks;
+  return createHash('sha256').update(data).digest('hex');
 }
 
 export function formatBytes(bytes: number): string {
@@ -104,7 +79,7 @@ export function formatBytes(bytes: number): string {
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
 export function formatTimestamp(ts: string): string {
@@ -114,7 +89,7 @@ export function formatTimestamp(ts: string): string {
 }
 
 export function generateNodeId(index: number): string {
-  return `node-${String(index).padStart(2, '0')}`;
+  return `node-${String(index + 1).padStart(2, '0')}`;
 }
 
 export function generateOperationId(): string {

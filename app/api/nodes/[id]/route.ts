@@ -18,7 +18,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const engine = getEngine();
     const { id: nodeId } = await params;
     const body = await request.json();
-    const { action, objectId, chunkIndex } = body;
+    const { action, objectId } = body;
 
     switch (action) {
       case 'fail':
@@ -28,10 +28,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         engine.recoverNode(nodeId);
         break;
       case 'corrupt':
-        if (!objectId || chunkIndex === undefined) {
-          return NextResponse.json({ error: 'objectId and chunkIndex required for corrupt' }, { status: 400 });
+        if (!objectId) {
+          return NextResponse.json({ error: 'objectId required for corrupt' }, { status: 400 });
         }
-        engine.corruptReplica(nodeId, objectId, chunkIndex);
+        engine.corruptReplica(nodeId, objectId);
         break;
       case 'partition': {
         const { peerId } = body;

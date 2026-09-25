@@ -1,22 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
-import { randomUUID, createHash } from 'crypto';
 import type { Node } from './types';
 import { computeChecksum, formatBytes } from './types';
 
 const STORAGE_ROOT = path.resolve(process.cwd(), 'storage');
 
-function getNodeDir(nodeId: string): string {
+/** Each node stores its objects directly in storage/<nodeId>/objects/ */
+export function getNodeDir(nodeId: string): string {
   return path.join(STORAGE_ROOT, nodeId);
-}
-
-function getChunkDir(nodeId: string): string {
-  return path.join(getNodeDir(nodeId), 'chunks');
-}
-
-function getObjectDir(nodeId: string): string {
-  return path.join(getNodeDir(nodeId), 'objects');
 }
 
 export function ensureStorageRoot(): void {
@@ -27,118 +18,107 @@ export function ensureStorageRoot(): void {
 
 export function ensureNodeDirs(nodeId: string): void {
   fs.mkdirSync(getNodeDir(nodeId), { recursive: true });
-  fs.mkdirSync(getChunkDir(nodeId), { recursive: true });
-  fs.mkdirSync(getObjectDir(nodeId), { recursive: true });
 }
 
-export function deleteNodeDirs(nodeId: string): boolean {
-  const nodeDir = getNodeDir(nodeId);
-  if (!fs.existsSync(nodeDir)) return false;
-  fs.rmSync(nodeDir, { recursive: true, force: true });
-  return true;
-}
-
+/** Compute actual bytes stored on a node by summing all .obj files on disk. */
 export function getNodeUsedBytes(nodeId: string): number {
-  const chunkDir = getChunkDir(nodeId);
-  if (!fs.existsSync(chunkDir)) return 0;
-  let total = 0;
+  const dir = getNodeDir(nodeId);
+  if (!fs.existsSync(dir)) return 0;
   try {
-    const files = fs.readdirSync(chunkDir, { recursive: true });
+    const files = fs.readdirSync(dir, { recursive: true });
+    let total = 0;
     for (const file of files) {
-      const fullPath = path.join(chunkDir, file as string);
-      if (fs.statSync(fullPath).isFile()) {
-        total += fs.statSync(fullPath).size;
-      }
+      if (typeof file !== 'string') continue;
+      const fullPath = path.join(dir, file);
+      try {
+        const stat = fs.statSync(fullPath);
+        if (stat.isFile() && file.endsWith('.obj')) {
+          total += stat.size;
+        }
+      } catch { /* skip unreadable files */ }
     }
-  } catch { /* ignore */ }
-  return total;
+    return total;
+  } catch { return 0; }
 }
 
+/** Count unique objects stored on this node by counting .obj files. */
 export function getNodeObjectCount(nodeId: string): number {
-  const objDir = getObjectDir(nodeId);
-  if (!fs.existsSync(objDir)) return 0;
+  const dir = getNodeDir(nodeId);
+  if (!fs.existsSync(dir)) return 0;
   try {
-    return fs.readdirSync(objDir).filter(f => f.endsWith('.meta.json')).length;
+    const files = fs.readdirSync(dir, { recursive: true });
+    return files.filter(f => typeof f === 'string' && f.endsWith('.obj')).length;
   } catch { return 0; }
 }
 
+/** Count replica entries — same as object count since each object = one replica per node. */
 export function getNodeReplicaCount(nodeId: string): number {
-  const chunkDir = getChunkDir(nodeId);
-  if (!fs.existsSync(chunkDir)) return 0;
-  try {
-    return fs.readdirSync(chunkDir).length;
-  } catch { return 0; }
+  return getNodeObjectCount(nodeId);
 }
 
-export function writeChunk(nodeId: string, objectId: string, chunkIndex: number, data: Buffer, checksum: string): string {
-  const chunkDir = getChunkDir(nodeId);
-  const safeName = `${objectId}_${chunkIndex}_${checksum.slice(0, 8)}.chunk`;
-  const filePath = path.join(chunkDir, safeName);
+/**
+ * Write a complete object copy to a node.
+ * Filename: <objectId>.obj
+ */
+export function writeObject(nodeId: string, objectId: string, data: Buffer): string {
+  const filePath = path.join(getNodeDir(nodeId), `${objectId}.obj`);
   fs.writeFileSync(filePath, data);
-  return safeName;
+  return filePath;
 }
 
-export function writeObjectMeta(nodeId: string, meta: Record<string, unknown>): string {
-  const objDir = getObjectDir(nodeId);
-  const safeName = `${meta.id}.meta.json`;
-  const filePath = path.join(objDir, safeName);
-  fs.writeFileSync(filePath, JSON.stringify(meta, null, 2));
-  return safeName;
-}
-
-export function readChunk(nodeId: string, objectId: string, chunkIndex: number): Buffer | null {
-  const chunkDir = getChunkDir(nodeId);
-  if (!fs.existsSync(chunkDir)) return null;
-  const files = fs.readdirSync(chunkDir);
-  const match = files.find(f => f.startsWith(`${objectId}_${chunkIndex}_`));
-  if (!match) return null;
+/** Read the full object copy from a node. */
+export function readObject(nodeId: string, objectId: string): Buffer | null {
+  const filePath = path.join(getNodeDir(nodeId), `${objectId}.obj`);
+  if (!fs.existsSync(filePath)) return null;
   try {
-    return fs.readFileSync(path.join(chunkDir, match));
+    return fs.readFileSync(filePath);
   } catch { return null; }
 }
 
-export function readFileChecksum(nodeId: string, objectId: string, chunkIndex: number): string | null {
-  const data = readChunk(nodeId, objectId, chunkIndex);
+/** Get the checksum of an object stored on a node. */
+export function getObjectChecksum(nodeId: string, objectId: string): string | null {
+  const data = readObject(nodeId, objectId);
   if (!data) return null;
   return computeChecksum(data);
 }
 
-export function deleteChunk(nodeId: string, objectId: string, chunkIndex: number): boolean {
-  const chunkDir = getChunkDir(nodeId);
-  if (!fs.existsSync(chunkDir)) return false;
-  const files = fs.readdirSync(chunkDir);
-  const match = files.find(f => f.startsWith(`${objectId}_${chunkIndex}_`));
-  if (!match) return false;
+/** Delete an object copy from a node. */
+export function deleteObject(nodeId: string, objectId: string): boolean {
+  const filePath = path.join(getNodeDir(nodeId), `${objectId}.obj`);
+  if (!fs.existsSync(filePath)) return false;
   try {
-    fs.unlinkSync(path.join(chunkDir, match));
+    fs.unlinkSync(filePath);
     return true;
   } catch { return false; }
 }
 
-export function corruptChunk(nodeId: string, objectId: string, chunkIndex: number): boolean {
-  const chunkDir = getChunkDir(nodeId);
-  if (!fs.existsSync(chunkDir)) return false;
-  const files = fs.readdirSync(chunkDir);
-  const match = files.find(f => f.startsWith(`${objectId}_${chunkIndex}_`));
-  if (!match) return false;
+/**
+ * Corrupt an object on a node by flipping bits in the stored file.
+ * The file remains on disk (so we can demonstrate repair), but its checksum changes.
+ */
+export function corruptObject(nodeId: string, objectId: string): boolean {
+  const filePath = path.join(getNodeDir(nodeId), `${objectId}.obj`);
+  if (!fs.existsSync(filePath)) return false;
   try {
-    const filePath = path.join(chunkDir, match);
     const data = fs.readFileSync(filePath);
-    // Flip first byte to corrupt
     const corrupted = Buffer.from(data);
-    corrupted[0] = corrupted[0] ^ 0xFF;
+    // Flip several bytes to make corruption obvious
+    for (let i = 0; i < Math.min(16, corrupted.length); i++) {
+      corrupted[i] = corrupted[i] ^ 0xFF;
+    }
     fs.writeFileSync(filePath, corrupted);
     return true;
   } catch { return false; }
 }
 
+/** Mark a node as offline via a marker file. */
 export function simulateOffline(nodeId: string): void {
-  // Create a marker file that prevents reads/writes
   const nodeDir = getNodeDir(nodeId);
   fs.mkdirSync(nodeDir, { recursive: true });
   fs.writeFileSync(path.join(nodeDir, '.offline'), 'true');
 }
 
+/** Clear the offline marker. */
 export function simulateOnline(nodeId: string): void {
   const nodeDir = getNodeDir(nodeId);
   const offlineMarker = path.join(nodeDir, '.offline');
@@ -147,11 +127,12 @@ export function simulateOnline(nodeId: string): void {
   }
 }
 
+/** Check whether a node is marked offline. */
 export function isNodeOffline(nodeId: string): boolean {
-  const offlineMarker = path.join(getNodeDir(nodeId), '.offline');
-  return fs.existsSync(offlineMarker);
+  return fs.existsSync(path.join(getNodeDir(nodeId), '.offline'));
 }
 
+/** Build a Node info snapshot from disk state. */
 export function getNodeInfo(nodeId: string, capacityBytes: number): Node {
   const usedBytes = getNodeUsedBytes(nodeId);
   const objectCount = getNodeObjectCount(nodeId);
