@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import LoadingScreen from '@/components/ui/LoadingScreen';
+import AmbientParticles from '@/components/ui/AmbientParticles';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type NodeStatus = 'healthy' | 'degraded' | 'offline' | 'recovering' | 'rebalancing' | 'corrupted';
@@ -233,6 +234,7 @@ export default function VaultApp() {
         transition={{ duration: 0.4, ease: [0.2, 0.8, 0.2, 1] }}
         className="min-h-screen relative"
       >
+        <AmbientParticles active />
         {/* Header */}
         <PremiumHeader
           activeTab={activeTab}
@@ -352,9 +354,10 @@ function PremiumHeader({
         <div className="max-w-screen-2xl mx-auto px-6 h-14 flex items-center justify-between">
           {/* Brand */}
           <div className="flex items-center gap-3">
-            <div className="relative">
-              <Shield className="w-5 h-5 text-vault-cyan/70" strokeWidth={1.5} />
-              <div className="absolute inset-0 animate-pulse-glow rounded-full opacity-30" />
+            <div className="relative flex items-center justify-center w-7 h-7 rounded-lg glass-card overflow-hidden">
+              <Shield className="w-4 h-4 text-vault-cyan/80 relative z-10" strokeWidth={1.5} />
+              <div className="absolute inset-0 bg-gradient-to-br from-vault-cyan/5 to-violet-500/5" />
+              <div className="absolute inset-0 animate-pulse-glow rounded-lg opacity-20" />
             </div>
             <span className="vault-title text-lg tracking-tight">VAULT</span>
             <span className="hidden sm:inline text-[10px] text-slate-500 tracking-[0.2em] uppercase font-medium border-l border-white/10 pl-3">
@@ -362,10 +365,10 @@ function PremiumHeader({
             </span>
           </div>
 
-          {/* Nav */}
-          <nav className="relative flex items-center gap-1 bg-white/[0.02] rounded-full px-1 py-1 border border-white/[0.06]">
+          {/* Nav capsule */}
+          <nav className="relative flex items-center gap-1 bg-white/[0.02] rounded-full px-1 py-1 border border-white/[0.06] nav-capsule">
             <motion.div
-              className="absolute top-1 bottom-1 rounded-full bg-white/[0.07] border border-white/[0.1]"
+              className="absolute top-1 bottom-1 rounded-full bg-white/[0.06] border border-white/[0.08]"
               style={{ width: 'calc(33.33% - 4px)' }}
               animate={{ left: `calc(${tabIdx * 33.33}% + 4px)` }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
@@ -374,8 +377,10 @@ function PremiumHeader({
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`relative z-10 px-5 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                  activeTab === tab.key ? 'text-slate-100' : 'text-slate-500 hover:text-slate-300'
+                className={`relative z-10 px-5 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${
+                  activeTab === tab.key
+                    ? 'text-slate-100 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-300'
                 }`}
               >
                 {tab.label}
@@ -521,19 +526,26 @@ function KPICard({
       onMouseMove={handleMove}
       style={{ '--rx': `${pos.x}%`, '--ry': `${pos.y}%` } as React.CSSProperties}
       className="glass-card glow-card rounded-2xl p-4 relative cursor-default overflow-hidden group"
-      whileHover={{ y: -3 }}
+      whileHover={{ y: -4, scale: 1.02 }}
       transition={{ type: 'spring', stiffness: 400, damping: 25 }}
     >
       {/* Top accent line */}
-      <div className="absolute top-0 left-4 right-4 h-px opacity-40"
+      <div className="absolute top-0 left-4 right-4 h-px opacity-40 group-hover:opacity-70 transition-opacity duration-300"
         style={{ background: `linear-gradient(90deg, transparent, ${color}, transparent)` }}
       />
       <div className="flex items-start justify-between mb-3">
         <span className="section-label">{label}</span>
-        <Icon className="w-4 h-4 opacity-25" style={{ color }} />
+        <div className="relative">
+          <Icon className="w-4 h-4 opacity-30 group-hover:opacity-50 transition-opacity duration-300" style={{ color }} />
+          <div className="absolute inset-0 blur-sm opacity-20 group-hover:opacity-40 transition-opacity" style={{ color }} />
+        </div>
       </div>
       <div className="metric-value" style={{ color }}>{value}</div>
       <div className="metric-sub mt-1.5">{sub}</div>
+      {/* Bottom subtle reflection */}
+      <div className="absolute bottom-0 left-0 right-0 h-px opacity-20 group-hover:opacity-40 transition-opacity duration-300"
+        style={{ background: `linear-gradient(90deg, transparent, ${color}, transparent)` }}
+      />
     </motion.div>
   );
 }
@@ -543,7 +555,7 @@ function FabBtn({ icon: Icon, label, onClick, disabled }: {
 }) {
   return (
     <button onClick={onClick} disabled={disabled}
-      className="btn-ghost px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 disabled:opacity-40">
+      className="btn-ghost px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 disabled:opacity-40 transition-all duration-200">
       <Icon className="w-3.5 h-3.5" /> {label}
     </button>
   );
@@ -609,7 +621,7 @@ function SkeletonDashboard() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// STORAGE FABRIC NETWORK
+// STORAGE FABRIC NETWORK — Premium cinematic node visualization
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const NODE_POS = [
@@ -617,13 +629,96 @@ const NODE_POS = [
   { x: 130, y: 260 }, { x: 370, y: 260 },
 ];
 
+function OrbitRing({ cx, cy, r, dash, color, opacity, speed, reverse }: {
+  cx: number; cy: number; r: number; dash: string; color: string;
+  opacity: number; speed: number; reverse?: boolean;
+}) {
+  return (
+    <circle
+      cx={cx} cy={cy} r={r}
+      fill="none" stroke={color} strokeWidth="0.6"
+      strokeDasharray={dash}
+      opacity={opacity}
+      style={{
+        transformOrigin: `${cx}px ${cy}px`,
+        animation: `orbit ${speed}s linear infinite${reverse ? ' reverse' : ''}`,
+      }}
+    />
+  );
+}
+
+function NodeOrbitalParticles({ cx, cy, r, count, color, active }: {
+  cx: number; cy: number; r: number; count: number; color: string; active: boolean;
+}) {
+  return Array.from({ length: count }).map((_, i) => {
+    const angle = (i / count) * Math.PI * 2;
+    const dist = r * (0.85 + (i % 3) * 0.18);
+    const px = cx + Math.cos(angle) * dist;
+    const py = cy + Math.sin(angle) * dist * 0.45;
+    const size = active ? 1.2 + (i % 2) * 0.5 : 0.6;
+    return (
+      <circle
+        key={i} cx={px} cy={py} r={size}
+        fill={color}
+        opacity={active ? 0.5 + (i % 3) * 0.15 : 0.12}
+        style={{
+          transformOrigin: `${cx}px ${cy}px`,
+          animation: `orbit ${8 + i * 2}s linear infinite${i % 2 ? ' reverse' : ''}`,
+        }}
+      />
+    );
+  });
+}
+
+function AnimatedGlowPulse({ cx, cy, r, color, active }: {
+  cx: number; cy: number; r: number; color: string; active: boolean;
+}) {
+  if (!active) return null;
+  return (
+    <>
+      <circle cx={cx} cy={cy} r={r} fill={color} opacity="0.03" filter="url(#sg)">
+        <animate attributeName="r" values={`${r};${r + 8};${r}`} dur="3s" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="0.03;0.07;0.03" dur="3s" repeatCount="indefinite" />
+      </circle>
+    </>
+  );
+}
+
+function FlowParticle({ x1, y1, x2, y2, delay }: {
+  x1: number; y1: number; x2: number; y2: number; delay: number;
+}) {
+  return (
+    <circle r="2" fill="rgba(56,189,248,0.8)" filter="url(#ng)">
+      <animateMotion
+        dur={`${2.2 + Math.random() * 1.8}s`}
+        repeatCount="indefinite"
+        begin={`${delay}s`}
+        path={`M${x1},${y1} L${x2},${y2}`}
+      />
+    </circle>
+  );
+}
+
+function DataPulseLine({ x1, y1, x2, y2, delay, color }: {
+  x1: number; y1: number; x2: number; y2: number; delay: number; color: string;
+}) {
+  return (
+    <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth="2" opacity="0">
+      <animate attributeName="opacity" values="0;0.7;0" dur="2s" begin={`${delay}s`} repeatCount="indefinite" />
+      <animate attributeName="stroke-dashoffset" from="20" to="0" dur="1s" begin={`${delay}s`} repeatCount="indefinite" />
+      <animate attributeName="stroke-dasharray" values="0 20;6 14;0 20" dur="2s" begin={`${delay}s`} repeatCount="indefinite" />
+    </line>
+  );
+}
+
 function FabricNetwork({ nodes, onNodeClick }: {
   nodes: Node[]; onNodeClick: (id: string) => void;
 }) {
   const dn = nodes.slice(0, 4);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   return (
-    <div className="relative w-full" style={{ height: 340 }}>
+    <div className="relative w-full select-none" style={{ height: 340 }}>
       <svg className="w-full h-full" viewBox="0 0 500 340" preserveAspectRatio="xMidYMid meet">
         <defs>
           <linearGradient id="vg" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -631,27 +726,46 @@ function FabricNetwork({ nodes, onNodeClick }: {
             <stop offset="50%" stopColor="rgba(139,92,246,0.05)" />
             <stop offset="100%" stopColor="rgba(56,189,248,0.06)" />
           </linearGradient>
+          <radialGradient id="coreGrad" cx="35%" cy="30%" r="65%">
+            <stop offset="0%" stopColor="rgba(255,255,255,0.15)" />
+            <stop offset="60%" stopColor="transparent" />
+            <stop offset="100%" stopColor="rgba(56,189,248,0.1)" />
+          </radialGradient>
           <filter id="ng">
             <feGaussianBlur stdDeviation="3" result="b" />
             <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
           </filter>
           <filter id="sg">
-            <feGaussianBlur stdDeviation="8" result="b" />
+            <feGaussianBlur stdDeviation="10" result="b" />
             <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
           </filter>
         </defs>
+
+        {/* Ambient fabric glow */}
+        <ellipse cx="250" cy="170" rx="200" ry="120" fill="rgba(56,189,248,0.015)" filter="url(#sg)" />
 
         {/* Connection lines */}
         {dn.map((node, i) =>
           dn.map((node2, j) =>
             j > i ? (
-              <line key={`c${i}${j}`}
-                x1={NODE_POS[i].x} y1={NODE_POS[i].y}
-                x2={NODE_POS[j].x} y2={NODE_POS[j].y}
-                stroke="url(#vg)" strokeWidth={1}
-                strokeDasharray={(node.partitions.includes(node2.id) || node2.partitions.includes(node.id)) ? '3 5' : undefined}
-                opacity={node.status === 'offline' || node2.status === 'offline' ? 0.12 : node.partitions.includes(node2.id) ? 0.3 : 0.45}
-              />
+              <g key={`c${i}${j}`}>
+                <line
+                  x1={NODE_POS[i].x} y1={NODE_POS[i].y}
+                  x2={NODE_POS[j].x} y2={NODE_POS[j].y}
+                  stroke="url(#vg)" strokeWidth="1"
+                  strokeDasharray={(node.partitions.includes(node2.id) || node2.partitions.includes(node.id)) ? '3 5' : undefined}
+                  opacity={node.status === 'offline' || node2.status === 'offline' ? 0.1 : node.partitions.includes(node2.id) ? 0.25 : 0.35}
+                  className="transition-all duration-500"
+                />
+                {/* Subtle data flow along connection */}
+                {node.status !== 'offline' && node2.status !== 'offline' && !node.partitions.includes(node2.id) && (
+                  <FlowParticle
+                    x1={NODE_POS[i].x} y1={NODE_POS[i].y}
+                    x2={NODE_POS[j].x} y2={NODE_POS[j].y}
+                    delay={i * 0.6 + j * 0.3 + Math.random()}
+                  />
+                )}
+              </g>
             ) : null
           )
         )}
@@ -662,24 +776,21 @@ function FabricNetwork({ nodes, onNodeClick }: {
             const pj = dn.findIndex(n => n.id === peerId);
             if (pj < 0) return null;
             return (
-              <line key={`p${i}${pj}`}
-                x1={NODE_POS[i].x} y1={NODE_POS[i].y}
-                x2={NODE_POS[pj].x} y2={NODE_POS[pj].y}
-                stroke="#ef4444" strokeWidth="1.5" strokeDasharray="3 4" opacity="0.35"
-              />
+              <g key={`p${i}${pj}`}>
+                <line
+                  x1={NODE_POS[i].x} y1={NODE_POS[i].y}
+                  x2={NODE_POS[pj].x} y2={NODE_POS[pj].y}
+                  stroke="#ef4444" strokeWidth="1.5" strokeDasharray="3 4" opacity="0.3"
+                  filter="url(#ng)"
+                />
+                <line
+                  x1={NODE_POS[i].x} y1={NODE_POS[i].y}
+                  x2={NODE_POS[pj].x} y2={NODE_POS[pj].y}
+                  stroke="#ef4444" strokeWidth="0.5" strokeDasharray="3 4" opacity="0.5"
+                />
+              </g>
             );
           })
-        )}
-
-        {/* Data flow particles */}
-        {dn.filter(n => n.status !== 'offline').map((_, i) =>
-          dn.filter((_, j) => j > i && dn[j]?.status !== 'offline').map((_, j) => (
-            <FlowParticle key={`f${i}${j}`}
-              x1={NODE_POS[i].x} y1={NODE_POS[i].y}
-              x2={NODE_POS[j].x} y2={NODE_POS[j].y}
-              delay={i * 0.8 + j * 0.4}
-            />
-          ))
         )}
 
         {/* Nodes */}
@@ -687,60 +798,110 @@ function FabricNetwork({ nodes, onNodeClick }: {
           if (!node) return null;
           const pos = NODE_POS[i];
           const active = node.status === 'healthy';
+          const recovering = node.status === 'recovering';
+          const offline = node.status === 'offline';
+          const degraded = node.status === 'degraded';
+          const isHovered = hoveredId === node.id;
           const oc = nodeStatusColor(node.status);
 
           return (
-            <g key={node.id} className="cursor-pointer" onClick={() => onNodeClick(node.id)}>
-              {/* Ambient glow */}
-              {active && (
-                <circle cx={pos.x} cy={pos.y} r="56" fill={oc} opacity="0.04" filter="url(#sg)" />
-              )}
+            <g
+              key={node.id}
+              className="cursor-pointer"
+              onClick={() => onNodeClick(node.id)}
+              onMouseEnter={() => setHoveredId(node.id)}
+              onMouseLeave={() => setHoveredId(null)}
+              style={{
+                transition: 'transform 0.3s cubic-bezier(.2,.8,.2,1)',
+                transform: isHovered ? 'scale(1.06)' : 'scale(1)',
+                transformOrigin: `${pos.x}px ${pos.y}px`,
+              }}
+            >
+              {/* Ambient pulsing glow */}
+              <AnimatedGlowPulse cx={pos.x} cy={pos.y} r={active ? 52 : 44} color={oc} active={active} />
+
+              {/* Tertiary dotted ring — outermost */}
+              <OrbitRing
+                cx={pos.x} cy={pos.y} r={active ? 50 : 42}
+                dash="2 6" color={oc} opacity={active ? 0.15 : 0.06}
+                speed={30} reverse
+              />
 
               {/* Outer orbital ring */}
-              <circle cx={pos.x} cy={pos.y} r={active ? 44 : 38}
-                fill="none" stroke={oc} strokeWidth={0.7}
-                strokeDasharray={active ? '5 7' : '2 5'}
-                opacity={active ? 0.35 : 0.15}
-                style={{ transformOrigin: `${pos.x}px ${pos.y}px`, animation: 'orbit 22s linear infinite' }}
-              />
-              {/* Inner orbital ring */}
-              <circle cx={pos.x} cy={pos.y} r={active ? 36 : 30}
-                fill="none" stroke="rgba(56,189,248,0.12)" strokeWidth={0.5}
-                strokeDasharray={active ? '8 5' : '3 5'}
-                style={{ transformOrigin: `${pos.x}px ${pos.y}px`, animation: 'orbit 16s linear infinite reverse' }}
+              <OrbitRing
+                cx={pos.x} cy={pos.y} r={active ? 44 : 38}
+                dash={active ? '5 7' : '2 5'}
+                color={oc} opacity={isHovered ? 0.55 : active ? 0.3 : 0.12}
+                speed={22}
               />
 
-              {/* Crystal core */}
+              {/* Inner orbital ring — opposite direction */}
+              <OrbitRing
+                cx={pos.x} cy={pos.y} r={active ? 36 : 30}
+                dash={active ? '8 5' : '3 5'}
+                color={recovering ? '#3b82f6' : active ? 'rgba(56,189,248,0.2)' : 'rgba(56,189,248,0.08)'}
+                opacity={isHovered ? 0.5 : active ? 0.3 : 0.1}
+                speed={16} reverse
+              />
+
+              {/* Orbital particles around node */}
+              {NodeOrbitalParticles({
+                cx: pos.x, cy: pos.y, r: active ? 46 : 38,
+                count: active ? 6 : 3, color: oc, active,
+              })}
+
+              {/* Glass core body */}
               <circle cx={pos.x} cy={pos.y} r={active ? 28 : 24}
-                fill="rgba(6,10,20,0.9)" stroke={oc} strokeWidth={active ? 1.5 : 1}
-                opacity={active ? 0.9 : 0.4}
+                fill="rgba(6,10,20,0.92)" stroke={oc}
+                strokeWidth={isHovered ? 2 : active ? 1.5 : 1}
+                opacity={offline ? 0.25 : active ? 0.9 : 0.4}
                 filter={active ? 'url(#ng)' : undefined}
               />
-              {/* Core fill gradient */}
-              <circle cx={pos.x} cy={pos.y} r={active ? 22 : 18}
-                fill={oc} opacity={active ? 0.07 : 0.03}
+              {/* Core inner highlight */}
+              <circle cx={pos.x} cy={pos.y} r={active ? 26 : 22}
+                fill="url(#coreGrad)" opacity={active ? 0.6 : 0.15}
+              />
+              {/* Core energy fill */}
+              <circle cx={pos.x} cy={pos.y} r={active ? 20 : 16}
+                fill={oc} opacity={recovering ? 0.12 : active ? 0.08 : 0.03}
               />
               {/* Center dot */}
-              <circle cx={pos.x} cy={pos.y} r={active ? 5 : 4}
-                fill={oc} opacity={active ? 0.85 : 0.35}
+              <circle cx={pos.x} cy={pos.y} r={active ? 4.5 : 3.5}
+                fill={oc} opacity={active ? 0.85 : 0.3}
+                filter={active ? 'url(#ng)' : undefined}
               />
 
               {/* Recovering pulse */}
-              {node.status === 'recovering' && (
-                <circle cx={pos.x} cy={pos.y} r="28" fill="none" stroke="#3b82f6" strokeWidth="1" opacity="0.3">
-                  <animate attributeName="r" values="28;40;28" dur="2s" repeatCount="indefinite" />
-                  <animate attributeName="opacity" values="0.3;0;0.3" dur="2s" repeatCount="indefinite" />
-                </circle>
+              {recovering && (
+                <>
+                  <circle cx={pos.x} cy={pos.y} r="28" fill="none" stroke="#3b82f6" strokeWidth="1" opacity="0.3">
+                    <animate attributeName="r" values="28;42;28" dur="2s" repeatCount="indefinite" />
+                    <animate attributeName="opacity" values="0.3;0;0.3" dur="2s" repeatCount="indefinite" />
+                  </circle>
+                  <circle cx={pos.x} cy={pos.y} r="20" fill="none" stroke="rgba(56,189,248,0.2)" strokeWidth="0.5">
+                    <animate attributeName="r" values="20;36;20" dur="1.5s" repeatCount="indefinite" />
+                    <animate attributeName="opacity" values="0.2;0;0.2" dur="1.5s" repeatCount="indefinite" />
+                  </circle>
+                </>
+              )}
+
+              {/* Degraded warning ring */}
+              {degraded && (
+                <circle cx={pos.x} cy={pos.y} r={active ? 30 : 26}
+                  fill="none" stroke="#f59e0b" strokeWidth="0.5"
+                  strokeDasharray="4 3" opacity="0.35"
+                  style={{ transformOrigin: `${pos.x}px ${pos.y}px`, animation: 'orbit 12s linear infinite' }}
+                />
               )}
 
               {/* Labels */}
-              <text x={pos.x} y={pos.y + 56} textAnchor="middle"
-                fill={active ? 'rgba(148,163,184,0.75)' : 'rgba(100,116,139,0.45)'}
-                fontSize="10" fontFamily="var(--font-mono)" fontWeight="500" letterSpacing="0.08em">
+              <text x={pos.x} y={pos.y + (active ? 54 : 48)} textAnchor="middle"
+                fill={active ? 'rgba(148,163,184,0.8)' : 'rgba(100,116,139,0.4)'}
+                fontSize="10" fontFamily="var(--font-mono)" fontWeight="500" letterSpacing="0.1em">
                 {node.id.toUpperCase()}
               </text>
-              <text x={pos.x} y={pos.y + 69} textAnchor="middle"
-                fill="rgba(100,116,139,0.35)" fontSize="8.5" fontFamily="var(--font-mono)">
+              <text x={pos.x} y={pos.y + (active ? 68 : 60)} textAnchor="middle"
+                fill="rgba(100,116,139,0.3)" fontSize="8" fontFamily="var(--font-mono)">
                 {formatBytes(node.usedBytes)} / {formatBytes(node.capacityBytes)}
               </text>
             </g>
@@ -750,27 +911,12 @@ function FabricNetwork({ nodes, onNodeClick }: {
 
       {/* Legend */}
       <div className="absolute bottom-2 left-4 flex gap-4 text-[10px] text-slate-500 mono">
-        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Healthy</span>
-        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-blue-400" />Recovering</span>
-        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-red-400" />Offline</span>
-        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-amber-400" />Degraded</span>
+        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-sm" style={{ boxShadow: '0 0 6px rgba(16,185,129,0.5)' }} />Healthy</span>
+        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-blue-400 shadow-sm" style={{ boxShadow: '0 0 6px rgba(59,130,246,0.5)' }} />Recovering</span>
+        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-red-400 shadow-sm" style={{ boxShadow: '0 0 6px rgba(239,68,68,0.5)' }} />Offline</span>
+        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-sm" style={{ boxShadow: '0 0 6px rgba(245,158,11,0.5)' }} />Degraded</span>
       </div>
     </div>
-  );
-}
-
-function FlowParticle({ x1, y1, x2, y2, delay }: {
-  x1: number; y1: number; x2: number; y2: number; delay: number;
-}) {
-  return (
-    <circle r="2.5" fill="rgba(56,189,248,0.75)" filter="url(#ng)">
-      <animateMotion
-        dur={`${2.5 + Math.random() * 2}s`}
-        repeatCount="indefinite"
-        begin={`${delay}s`}
-        path={`M${x1},${y1} L${x2},${y2}`}
-      />
-    </circle>
   );
 }
 
