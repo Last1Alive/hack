@@ -10,7 +10,7 @@ module.exports = {
         border: "rgba(255,255,255,0.07)",
         input: "rgba(255,255,255,0.04)",
         ring: "#38bdf8",
-        background: "#050a14",
+        background: "#040810",
         foreground: "#e8edf5",
         // Soft surfaces
         primary: { DEFAULT: "#0ea5e9", foreground: "#050a14" },
@@ -18,8 +18,8 @@ module.exports = {
         destructive: { DEFAULT: "#ef4444", foreground: "#f8fafc" },
         muted: { DEFAULT: "rgba(255,255,255,0.03)", foreground: "#64748b" },
         accent: { DEFAULT: "#818cf8", foreground: "#f8fafc" },
-        popover: { DEFAULT: "#080f1e", foreground: "#e8edf5" },
-        card: { DEFAULT: "rgba(8,15,30,0.6)", foreground: "#e8edf5" },
+        popover: { DEFAULT: "#060d1a", foreground: "#e8edf5" },
+        card: { DEFAULT: "rgba(10,18,36,0.6)", foreground: "#e8edf5" },
         // Vault brand palette
         vault: {
           cyan:     "#06b6d4",
@@ -30,12 +30,12 @@ module.exports = {
           amber:    "#f59e0b",
           rose:     "#f43f5e",
           crimson:  "#dc2626",
-          ink:      "#050a14",
-          smoke:    "#0a1224",
-          fog:      "#111c33",
-          surface:  "rgba(14,22,40,0.65)",
-          glass:    "rgba(255,255,255,0.04)",
-          highlight:"rgba(255,255,255,0.08)",
+          ink:      "#040810",
+          smoke:    "#060d1a",
+          fog:      "#0c1528",
+          surface:  "rgba(12,21,40,0.7)",
+          glass:    "rgba(255,255,255,0.035)",
+          highlight:"rgba(255,255,255,0.07)",
           pearl:    "#f0f4ff",
         },
       },
@@ -43,6 +43,7 @@ module.exports = {
       fontFamily: {
         sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
         mono: ['var(--font-mono)', 'ui-monospace', 'monospace'],
+        cinzel: ['var(--font-cinzel)', 'serif'],
       },
       keyframes: {
         "pulse-glow": {
@@ -79,7 +80,7 @@ module.exports = {
         "fade-out":    "fade-out 0.6s ease-in forwards",
       },
       backgroundImage: {
-        "grid-subtle":  "linear-gradient(rgba(56,189,248,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(56,189,248,0.03) 1px, transparent 1px)",
+        "grid-subtle":  "linear-gradient(rgba(56,189,248,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(56,189,248,0.02) 1px, transparent 1px)",
         "radial-ambient":"radial-gradient(ellipse 80% 60% at 50% 0%, rgba(56,189,248,0.08) 0%, transparent 60%)",
         "iridescent-border": "linear-gradient(135deg, rgba(56,189,248,0.25) 0%, rgba(139,92,246,0.20) 50%, rgba(244,63,94,0.12) 100%)",
         "card-highlight":"linear-gradient(160deg, rgba(255,255,255,0.06) 0%, transparent 55%)",
@@ -87,11 +88,12 @@ module.exports = {
         "node-glow-violet":"radial-gradient(circle, rgba(139,92,246,0.25) 0%, transparent 70%)",
       },
       boxShadow: {
-        "glass":     "0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05)",
-        "glass-hover":"0 12px 48px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.08), 0 0 0 1px rgba(56,189,248,0.12)",
+        "glass":     "0 8px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05), 0 0 0 1px rgba(0,0,0,0.3)",
+        "glass-hover":"0 16px 64px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.08), 0 0 0 1px rgba(56,189,248,0.12), 0 0 80px rgba(56,189,248,0.04)",
         "node":      "0 0 40px rgba(56,189,248,0.15), 0 0 80px rgba(99,102,241,0.08)",
         "node-hover":"0 0 60px rgba(56,189,248,0.3), 0 0 120px rgba(99,102,241,0.15)",
         "glow-cyan": "0 0 20px rgba(6,182,212,0.3), 0 0 60px rgba(6,182,212,0.1)",
+        "atmo-red":  "0 0 80px rgba(220,38,38,0.06)",
       },
       transitionTimingFunction: {
         "premium": "cubic-bezier(.2,.8,.2,1)",
