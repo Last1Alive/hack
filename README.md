@@ -41,15 +41,15 @@ Vault implements a **locally executable distributed-storage model** with indepen
 - **Write Policy**: Majority ACK (data acknowledged after writing to a majority of replicas)
 - **Read Policy**: Quorum read (reads require at least 2 valid replicas)
 - **Replication**: Configurable factor (1–N nodes), spread across nodes avoiding single points of failure
-- **Integrity**: SHA-256 checksums per chunk; full object-level checksum verification
+- **Integrity**: SHA-256 checksums per object; full object-level checksum verification
 - **Repair**: Automatic background repair cycle detects missing/corrupted replicas and re-replicates from healthy sources
-- **Rebalancing**: Background rebalance detects storage imbalance and redistributes chunks
+- **Rebalancing**: Background rebalance detects storage imbalance and redistributes objects
 
 ## Features
 
 | Feature | Description |
 |---------|-------------|
-| **Object Upload** | Chunk-based upload with configurable replication factor |
+| **Object Upload** | Full-file upload with configurable replication factor |
 | **Replication** | Automatic multi-node replica distribution |
 | **Node Failure** | Simulate offline nodes; system continues serving from remaining replicas |
 | **Data Corruption** | Inject corruption; system detects via SHA-256 verification |
@@ -72,19 +72,21 @@ Vault implements a **locally executable distributed-storage model** with indepen
 
 ## Technology Stack
 
-- **Frontend**: Next.js 15 App Router, React 18, Tailwind CSS, Framer Motion, Radix UI
-- **Backend**: Next.js API routes (serverless functions)
+- **Frontend**: Next.js 15 App Router, React 18, Tailwind CSS v3, Framer Motion, Radix UI, tsParticles
+- **Backend**: Next.js Serverless Functions
 - **Storage Engine**: Node.js native `fs` + `crypto` modules
 - **Data Integrity**: SHA-256 checksums
 - **State Persistence**: JSON metadata file (`.vault-meta.json`)
 
-## Setup & Run
+---
+
+## Local Setup & Run
 
 ```bash
 # Install dependencies
 yarn install
 
-# Start development server
+# Start development server (port 3001)
 yarn dev
 # Opens at http://localhost:3001
 
@@ -93,23 +95,71 @@ yarn build
 yarn start
 ```
 
+## Deploy to Vercel
+
+This project deploys as a Vercel **Edge Function** stack with serverless API routes.
+
+### One-click deploy
+
+1. Push code to GitHub (this repo)
+2. Import at https://vercel.com/new
+3. Select this repository → **Deploy**
+
+No additional environment variables are required. Default values are:
+
+| Variable | Default | Note |
+|----------|---------|------|
+| `VAULT_DEFAULT_REPLICATION_FACTOR` | `3` | How many replicas per object |
+| `VAULT_CAPACITY_PER_NODE_BYTES` | `2147483648` | 2 GB per node |
+| `VAULT_STORAGE_PATH` | `./storage` | **⚠️ Ephemeral on Vercel** — see notes below |
+
+### ⚠️ Important: Vercel Storage Limitation
+
+Vercel's serverless functions have an **ephemeral filesystem**. Data written to `./storage/` persists across function invocations **within the same container**, but is **lost on redeploy, scale-to-zero, or container rotation**.
+
+For a **persistent production deployment** on Vercel, integrate Vercel KV:
+
+```bash
+# Add Vercel KV persistence (optional)
+yarn add @vercel/kv
+
+# Then replace metadata-store.ts and node-storage.ts 
+# to use KV instead of local filesystem
+```
+
+For a **demonstration / showcase** (this project's intended use case), the default file-based storage is fine — uploads work end-to-end and survive page refreshes within a session.
+
+### Production (persistent) alternative
+
+If you need persistent storage across redeployments, deploy as a **Vercel Container** (Pro plan):
+
+```bash
+# Set VERCEL_REGION and enable containers in vercel.json
+```
+
+Or use a separate storage backend (S3, Supabase, etc.).
+
+---
+
 ## API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/cluster` | Cluster health & metrics |
 | GET | `/api/nodes` | List all nodes |
-| POST | `/api/nodes/{id}` | Fail / recover a node |
-| POST | `/api/nodes/{id}` | Corrupt replica (with objectId, chunkIndex) |
-| POST | `/api/nodes/{id}` | Partition / heal network partition |
+| POST | `/api/nodes` | Fail / recover a node (body: `{nodeId, action}`) |
 | GET | `/api/objects` | List all objects with replica status |
 | POST | `/api/objects` | Upload new object (multipart/form-data) |
 | GET | `/api/objects/{id}` | Get object details |
 | DELETE | `/api/objects/{id}` | Delete object |
 | POST | `/api/objects/{id}/verify` | Verify integrity of specific object |
+| POST | `/api/objects/{id}/download` | Download object data |
 | POST | `/api/rebalance` | Trigger manual rebalancing |
 | POST | `/api/verify-all` | Run full integrity scan |
 | GET | `/api/operations` | Get operation history |
+| GET/PUT | `/api/config` | View / update cluster configuration |
+
+---
 
 ## Project Structure
 
@@ -127,6 +177,7 @@ Vault/
 │   └── types.ts             # Type definitions
 ├── components/              # React UI components
 ├── storage/                 # Runtime node storage (gitignored)
+├── vercel.json              # Vercel deployment config
 ├── package.json
 ├── tsconfig.json
 └── tailwind.config.js
@@ -140,5 +191,6 @@ This is a **local simulation** of a distributed storage system, not a production
 - "Network partitions" are simulated via in-memory state
 - Filesystem-based storage is used instead of a real distributed filesystem
 - Limited to ~4 nodes in the default configuration
+- Vercel serverless: storage is ephemeral across scale events
 
 The architecture is designed to be extensible to a real distributed system by replacing the local filesystem abstraction with network RPC calls between independent processes.
