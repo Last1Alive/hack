@@ -16,10 +16,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     const data = readObject(validReplica.nodeId, id);
     if (!data) return NextResponse.json({ error: 'Data not found on storage node' }, { status: 404 });
 
+    // Sanitize filename for HTTP headers (remove control chars, newlines)
+    const safeFilename = (obj.name || 'file').replace(/[\r\n\t]/g, '_').slice(0, 200);
+
     return new NextResponse(data, {
       headers: {
         'Content-Type': obj.mimeType || 'application/octet-stream',
-        'Content-Disposition': `attachment; filename="${obj.name}"`,
+        'Content-Disposition': `attachment; filename="${safeFilename}"`,
         'Content-Length': String(data.length),
       },
     });
