@@ -64,11 +64,14 @@ export interface ClusterConfig {
   defaultReplicationFactor: number;
   writePolicy: 'one' | 'majority' | 'all';
   readPolicy: 'any' | 'quorum' | 'verified';
+  /** Per-node storage capacity in bytes (default 2 GB). */
+  capacityPerNodeBytes: number;
 }
 
 export const DEFAULT_REPLICATION_FACTOR = 3;
 export const DEFAULT_WRITE_POLICY: 'one' | 'majority' | 'all' = 'majority';
 export const DEFAULT_READ_POLICY: 'any' | 'quorum' | 'verified' = 'quorum';
+export const DEFAULT_CAPACITY_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB per node
 
 export function computeChecksum(data: Buffer): string {
   return createHash('sha256').update(data).digest('hex');

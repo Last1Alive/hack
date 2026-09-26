@@ -3,13 +3,13 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import type { ObjectMetadata, Replica, Operation } from './types';
-import { generateObjectId, generateOperationId } from './types';
+import { computeChecksum, formatBytes, generateObjectId, generateOperationId, DEFAULT_CAPACITY_BYTES } from './types';
 
 const META_PATH = path.resolve(process.cwd(), '.vault-meta.json');
 
 let objects: Map<string, ObjectMetadata> = new Map();
 let operations: Operation[] = [];
-let config = { defaultReplicationFactor: 3, writePolicy: 'majority' as const, readPolicy: 'quorum' as const };
+let config = { defaultReplicationFactor: 3, writePolicy: 'majority' as const, readPolicy: 'quorum' as const, capacityPerNodeBytes: DEFAULT_CAPACITY_BYTES };
 
 export function loadMetadata(): void {
   try {

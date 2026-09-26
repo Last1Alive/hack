@@ -3,6 +3,7 @@ import {
   Node, ObjectMetadata, Replica, Operation, OperationType,
   computeChecksum, formatBytes, generateObjectId, generateOperationId,
   DEFAULT_REPLICATION_FACTOR, DEFAULT_WRITE_POLICY, DEFAULT_READ_POLICY,
+  DEFAULT_CAPACITY_BYTES,
 } from './types';
 import {
   ensureStorageRoot, ensureNodeDirs, getNodeInfo, getNodeUsedBytes,
@@ -20,6 +21,7 @@ export interface VaultOptions {
   nodeCount?: number;
   capacityPerNodeBytes?: number;
   defaultReplicationFactor?: number;
+  initialCapacityPerNodeBytes?: number;
 }
 
 /** One replica = one complete copy of the object on one node. */
@@ -35,8 +37,9 @@ export class VaultEngine {
     this.options = {
       nodeCount: opts.nodeCount ?? 4,
       /** 2 GB per node — realistic for a demo cluster. */
-      capacityPerNodeBytes: opts.capacityPerNodeBytes ?? (2 * 1024 * 1024 * 1024),
-      defaultReplicationFactor: opts.defaultReplicationFactor ?? 3,
+      capacityPerNodeBytes: opts.initialCapacityPerNodeBytes ?? opts.capacityPerNodeBytes ?? DEFAULT_CAPACITY_BYTES,
+      defaultReplicationFactor: opts.defaultReplicationFactor ?? DEFAULT_REPLICATION_FACTOR,
+      initialCapacityPerNodeBytes: opts.initialCapacityPerNodeBytes,
     };
   }
 
@@ -101,16 +104,25 @@ export class VaultEngine {
   /** Verify each replica record against actual disk content and update status. */
   private reIndexReplicas(obj: ObjectMetadata): void {
     for (const replica of obj.replicas) {
+      // Offline nodes: treat replica as missing even if file exists on disk
+      if (isNodeOffline(replica.nodeId)) {
+        replica.status = 'missing';
+        continue;
+      }
       const data = readObject(replica.nodeId, obj.id);
       if (data === null) {
         replica.status = 'missing';
       } else {
-        const actual = computeChecksum(data);
-        const expected = replica.checksum; // preserve for comparison
-        replica.checksum = actual; // sync to disk reality
-        replica.status = actual === expected ? 'valid' : 'corrupted';
+        const actualChecksum = computeChecksum(data);
+        // Compare BEFORE overwriting -- stored checksum is ground truth
+        const storedChecksum = replica.checksum;
+        replica.status = actualChecksum === storedChecksum ? 'valid' : 'corrupted';
         replica.size = data.length;
         replica.updatedAt = new Date().toISOString();
+        // Only update checksum if stored one was stale/empty
+        if (!storedChecksum || storedChecksum.length !== 64) {
+          replica.checksum = actualChecksum;
+        }
       }
     }
     this.updateIntegrityStatus(obj);
@@ -139,12 +151,15 @@ export class VaultEngine {
 
   getNodes(): Node[] {
     const result: Node[] = [];
+    const cfg = getConfig();
+    const capacityBytes = cfg.capacityPerNodeBytes ?? this.options.capacityPerNodeBytes;
     for (let i = 0; i < this.options.nodeCount; i++) {
       const nodeId = `node-${String(i + 1).padStart(2, '0')}`;
       const existing = this.nodes.get(nodeId);
       if (existing) {
         result.push({
           ...existing,
+          capacityBytes,
           usedBytes: getNodeUsedBytes(nodeId),
           objectCount: getNodeObjectCount(nodeId),
           replicaCount: getNodeReplicaCount(nodeId),
@@ -274,7 +289,8 @@ export class VaultEngine {
     const now = new Date().toISOString();
 
     // Select exactly `rf` distinct healthy nodes
-    const availableNodes = this.getNodes()
+    const allNodes = this.getNodes();
+    const availableNodes = allNodes
       .filter(n => n.status === 'healthy')
       .map(n => n.id);
 
@@ -285,6 +301,19 @@ export class VaultEngine {
     }
 
     const targets = this.selectTargets(availableNodes, rf);
+
+    // Validate capacity on each target node
+    const nodeMap = new Map(allNodes.map(n => [n.id, n]));
+    for (const nodeId of targets) {
+      const node = nodeMap.get(nodeId);
+      if (!node) continue;
+      const freeBytes = node.capacityBytes - node.usedBytes;
+      if (freeBytes < data.length) {
+        throw new Error(
+          `Insufficient storage on ${nodeId}: need ${formatBytes(data.length)}, free ${formatBytes(freeBytes)}`
+        );
+      }
+    }
 
     // Write the complete object to each target node
     const replicas: Replica[] = [];
@@ -364,6 +393,12 @@ export class VaultEngine {
     const issues: string[] = [];
 
     for (const replica of obj.replicas) {
+      // Offline nodes have their replicas treated as unavailable
+      if (isNodeOffline(replica.nodeId)) {
+        replica.status = 'missing';
+        issues.push(`Missing replica on ${replica.nodeId} (node offline)`);
+        continue;
+      }
       const actualData = readObject(replica.nodeId, objectId);
       if (actualData === null) {
         replica.status = 'missing';
@@ -378,9 +413,12 @@ export class VaultEngine {
         } else {
           replica.status = 'valid';
         }
-        replica.checksum = actualChecksum;
-        replica.size = actualData.length;
-        replica.updatedAt = new Date().toISOString();
+        // Only update metadata for valid replicas
+        if (replica.status === 'valid') {
+          replica.checksum = actualChecksum;
+          replica.size = actualData.length;
+          replica.updatedAt = new Date().toISOString();
+        }
       }
     }
 
@@ -604,13 +642,11 @@ export class VaultEngine {
     const objects = getObjects();
 
     for (const obj of objects) {
-      const validReplicas = obj.replicas.filter(r => r.status === 'valid').length;
-      // Skip if already fully replicated
-      if (validReplicas >= obj.replicationFactor) continue;
-
-      // For each missing/corrupted replica, try to recreate from a valid source
+      // For each missing or corrupted replica, try to recreate from a valid source
+      let needsRepair = false;
       for (const replica of obj.replicas) {
         if (replica.status === 'valid') continue;
+        needsRepair = true;
 
         // Find a valid source on a DIFFERENT healthy node
         const source = obj.replicas.find(
