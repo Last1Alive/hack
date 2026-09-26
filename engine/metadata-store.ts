@@ -1,11 +1,21 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import type { ObjectMetadata, Replica, Operation } from './types';
 import { computeChecksum, formatBytes, generateObjectId, generateOperationId, DEFAULT_CAPACITY_BYTES } from './types';
 
-const META_PATH = path.resolve(process.cwd(), '.vault-meta.json');
+/**
+ * Use a writable temp directory on serverless platforms (Vercel, Netlify, etc.)
+ * where /var/task is read-only. Falls back to cwd for local dev.
+ */
+const isServerless = process.env.VERCEL === '1' || process.platform === 'linux' && process.stdout.isTTY === false;
+const VAULT_META_DIR = isServerless ? '/tmp/vault' : path.resolve(process.cwd());
+const META_PATH = path.join(VAULT_META_DIR, '.vault-meta.json');
+
+// Ensure the writable dir exists on serverless platforms
+if (isServerless) {
+  fs.mkdirSync(VAULT_META_DIR, { recursive: true });
+}
 
 let objects: Map<string, ObjectMetadata> = new Map();
 let operations: Operation[] = [];

@@ -3,7 +3,18 @@ import * as path from 'path';
 import type { Node } from './types';
 import { computeChecksum, formatBytes } from './types';
 
-const STORAGE_ROOT = path.resolve(process.cwd(), 'storage');
+/**
+ * Use /tmp on serverless platforms (Vercel) where /var/task is read-only.
+ * Falls back to local ./storage/ for local development.
+ */
+const isServerless = process.env.VERCEL === '1' || (process.platform === 'linux' && !process.stdout.isTTY);
+const STORAGE_ROOT = isServerless
+  ? '/tmp/vault-storage'
+  : path.resolve(process.cwd(), 'storage');
+
+if (isServerless) {
+  fs.mkdirSync(STORAGE_ROOT, { recursive: true });
+}
 
 /** Each node stores its objects directly in storage/<nodeId>/objects/ */
 export function getNodeDir(nodeId: string): string {
