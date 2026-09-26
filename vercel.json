@@ -6,12 +6,16 @@
   "outputDirectory": ".next",
   "regions": ["iad1"],
   "env": {
-    "NEXT_PUBLIC_APP_NAME": "VAULT Distributed Storage",
     "VAULT_DEFAULT_REPLICATION_FACTOR": "3",
     "VAULT_CAPACITY_PER_NODE_BYTES": "2147483648"
   },
   "github": {
-    "silent": true,
-    "autoJobCheckpointing": false
+    "silent": true
+  },
+  "functions": {
+    "app/api/**/*.ts": {
+      "memory": 512,
+      "maxDuration": 30
+    }
   }
 }
