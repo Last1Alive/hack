@@ -629,6 +629,14 @@ const NODE_POS = [
   { x: 130, y: 260 }, { x: 370, y: 260 },
 ];
 
+/** Safely get partitions as array — handles string|undefined|missing */
+function safePartitions(node: Node): string[] {
+  const p = node.partitions as unknown as string | string[] | undefined;
+  if (Array.isArray(p)) return p;
+  if (typeof p === 'string') return p.split(',').filter(Boolean);
+  return [];
+}
+
 function OrbitRing({ cx, cy, r, dash, color, opacity, speed, reverse }: {
   cx: number; cy: number; r: number; dash: string; color: string;
   opacity: number; speed: number; reverse?: boolean;
@@ -753,12 +761,12 @@ function FabricNetwork({ nodes, onNodeClick }: {
                   x1={NODE_POS[i].x} y1={NODE_POS[i].y}
                   x2={NODE_POS[j].x} y2={NODE_POS[j].y}
                   stroke="url(#vg)" strokeWidth="1"
-                  strokeDasharray={(node.partitions.includes(node2.id) || node2.partitions.includes(node.id)) ? '3 5' : undefined}
-                  opacity={node.status === 'offline' || node2.status === 'offline' ? 0.1 : node.partitions.includes(node2.id) ? 0.25 : 0.35}
+                  strokeDasharray={(safePartitions(node).includes(node2.id) || safePartitions(node2).includes(node.id)) ? '3 5' : undefined}
+                  opacity={node.status === 'offline' || node2.status === 'offline' ? 0.1 : safePartitions(node).includes(node2.id) ? 0.25 : 0.35}
                   className="transition-all duration-500"
                 />
                 {/* Subtle data flow along connection */}
-                {node.status !== 'offline' && node2.status !== 'offline' && !node.partitions.includes(node2.id) && (
+                {node.status !== 'offline' && node2.status !== 'offline' && !safePartitions(node).includes(node2.id) && (
                   <FlowParticle
                     x1={NODE_POS[i].x} y1={NODE_POS[i].y}
                     x2={NODE_POS[j].x} y2={NODE_POS[j].y}
@@ -772,7 +780,7 @@ function FabricNetwork({ nodes, onNodeClick }: {
 
         {/* Partition red overlays */}
         {dn.map((node, i) =>
-          node.partitions.map(peerId => {
+          safePartitions(node).map(peerId => {
             const pj = dn.findIndex(n => n.id === peerId);
             if (pj < 0) return null;
             return (
